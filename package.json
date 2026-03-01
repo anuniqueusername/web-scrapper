@@ -1,0 +1,16 @@
+{
+  "name": "kijiji-scraper",
+  "version": "1.0.0",
+  "description": "Kijiji vending machine listings scraper",
+  "main": "scraper.js",
+  "scripts": {
+    "start": "node scraper.js",
+    "dev": "node scraper.js",
+    "send-all": "node send-all.js"
+  },
+  "dependencies": {
+    "puppeteer": "^24.37.5",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1"
+  }
+}
