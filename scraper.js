@@ -4,7 +4,7 @@ const path = require('path');
 const axios = require('axios');
 require('dotenv').config();
 
-const URL = 'https://www.kijiji.ca/b-gta-greater-toronto-area/vending-machine/k0l1700272?view=list';
+const URL = 'https://www.kijiji.ca/b-canada/vending-machine/k0l0?view=list';
 const DATA_DIR = path.join(__dirname, 'data');
 const OUTPUT_FILE = path.join(DATA_DIR, 'listings.json');
 
@@ -237,6 +237,14 @@ async function scrapeListings() {
     fs.writeFileSync(OUTPUT_FILE, JSON.stringify(allListings, null, 2));
 
     console.log(`[${new Date().toISOString()}] Scrape complete. Found ${listings.length} listings. Added ${newListings.length} new listings. Total: ${allListings.length}`);
+
+    // Log all found listings
+    if (listings.length > 0) {
+      console.log(`[${new Date().toISOString()}] 📋 All listings found:`);
+      listings.forEach((listing) => {
+        console.log(`${listing.title} | ${listing.price}`);
+      });
+    }
 
     // Send Discord notification if there are new listings
     if (newListings.length > 0) {
