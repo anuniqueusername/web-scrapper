@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node scraper.js",
     "dev": "node scraper.js",
-    "send-all": "node send-all.js"
+    "send-all": "node send-all.js",
+    "pool": "node scraper-pool.js"
   },
   "dependencies": {
     "puppeteer": "^24.37.5",
