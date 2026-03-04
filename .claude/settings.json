@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run send-all)"
+      "Bash(npm run send-all)",
+      "Bash(npm run facebook)"
     ]
   }
 }

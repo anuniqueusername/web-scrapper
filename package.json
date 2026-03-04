@@ -7,7 +7,9 @@
     "start": "node scraper.js",
     "dev": "node scraper.js",
     "send-all": "node send-all.js",
-    "pool": "node scraper-pool.js"
+    "pool": "node scraper-pool.js",
+    "facebook": "node facebook-scraper-pool.js",
+    "facebook:dev": "node facebook-scraper-pool.js"
   },
   "dependencies": {
     "puppeteer": "^24.37.5",
