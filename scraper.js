@@ -132,6 +132,11 @@ async function scrapeListings() {
     const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
     console.log(`[${new Date().toISOString()}] 💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
+    const cpuUsage = process.cpuUsage();
+    const userCpuMs = Math.round(cpuUsage.user / 1000);
+    const systemCpuMs = Math.round(cpuUsage.system / 1000);
+    console.log(`[${new Date().toISOString()}] ⚙️  CPU usage: User: ${userCpuMs}ms | System: ${systemCpuMs}ms`);
+
     console.log(`[${new Date().toISOString()}] Starting scrape...`);
 
     browserInstance = await initBrowser();

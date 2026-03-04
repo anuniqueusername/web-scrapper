@@ -1,4 +1,92 @@
+# Dependencies
 node_modules/
+package-lock.json
+npm-debug.log
+npm-error.log
+yarn.lock
+yarn-error.log
+pnpm-lock.yaml
+
+# Data files
 data/
+*.json
+!package.json
+!jsconfig.json
+!next.config.js
+scraper-config.json
+scraper-status.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.eslintcache
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.cache/
+
+# Testing
+.nyc_output/
+coverage/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Browser extensions
+.crx
+.rsa
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# Local development
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Misc
+.turbo/
+tsconfig.tsbuildinfo

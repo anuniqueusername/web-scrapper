@@ -106,6 +106,11 @@ class KijijiWorker {
       const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
       this.log(`💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
+      const cpuUsage = process.cpuUsage();
+      const userCpuMs = Math.round(cpuUsage.user / 1000);
+      const systemCpuMs = Math.round(cpuUsage.system / 1000);
+      this.log(`⚙️  CPU usage: User: ${userCpuMs}ms | System: ${systemCpuMs}ms`);
+
       this.log(`Starting scrape...`);
 
       await this.init();

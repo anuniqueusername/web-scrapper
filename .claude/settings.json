@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm run send-all)",
-      "Bash(npm run facebook)"
+      "Bash(npm run facebook)",
+      "Bash(npm install next react react-dom axios date-fns)",
+      "Bash(npx next build)"
     ]
   }
 }

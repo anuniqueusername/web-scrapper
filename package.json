@@ -9,11 +9,18 @@
     "send-all": "node send-all.js",
     "pool": "node scraper-pool.js",
     "facebook": "node facebook-scraper-pool.js",
-    "facebook:dev": "node facebook-scraper-pool.js"
+    "facebook:dev": "node facebook-scraper-pool.js",
+    "web": "next dev",
+    "web:build": "next build",
+    "web:start": "next start"
   },
   "dependencies": {
+    "axios": "^1.13.6",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.3.1",
+    "next": "^16.1.6",
     "puppeteer": "^24.37.5",
-    "axios": "^1.6.0",
-    "dotenv": "^16.3.1"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }
