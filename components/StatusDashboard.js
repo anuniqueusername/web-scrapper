@@ -53,7 +53,7 @@ export default function StatusDashboard({ status, config }) {
           <h3>Recent Errors</h3>
           <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
             {status.errors.slice(-5).map((error, idx) => (
-              <div key={idx} className="alert alert-error" style={{ marginBottom: '8px' }}>
+              <div key={`${error}-${idx}`} className="alert alert-error" style={{ marginBottom: '8px' }}>
                 <small>{error}</small>
               </div>
             ))}
