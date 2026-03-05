@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import StatusDashboard from '@/components/StatusDashboard';
 import ScraperControls from '@/components/ScraperControls';
-import ScraperScheduling from '@/components/ScraperScheduling';
+import ScraperLogs from '@/components/ScraperLogs';
 import styles from './Dashboard.module.css';
 
 export default function DashboardPage() {
@@ -98,12 +98,7 @@ export default function DashboardPage() {
         <StatusDashboard status={status} />
 
         <div className={styles.fullWidth}>
-          <ScraperScheduling
-            config={config}
-            status={status}
-            onUpdate={handleConfigUpdate}
-            onRun={() => loadData()}
-          />
+          <ScraperLogs />
         </div>
       </div>
     </div>

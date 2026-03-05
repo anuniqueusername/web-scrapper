@@ -15,6 +15,7 @@ export default function ListingsTable({ listings }) {
       <table>
         <thead>
           <tr>
+            <th style={{ width: '60px' }}>#</th>
             <th>Title</th>
             <th>Price</th>
             <th>Location</th>
@@ -25,10 +26,13 @@ export default function ListingsTable({ listings }) {
         <tbody>
           {listings.map(listing => (
             <tr key={listing.id}>
+              <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#d8b4fe' }}>
+                {listing.order || '—'}
+              </td>
               <td>
                 <strong>{listing.title}</strong>
                 {listing.description && (
-                  <p style={{ fontSize: '0.85em', color: '#666', marginTop: '4px' }}>
+                  <p style={{ fontSize: '0.85em', color: '#a1aec8', marginTop: '4px' }}>
                     {listing.description.substring(0, 100)}...
                   </p>
                 )}

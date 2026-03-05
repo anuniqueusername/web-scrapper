@@ -18,7 +18,6 @@ export default function ScraperScheduling({
   onUpdate,
   onRun,
 }) {
-  const [isEditing, setIsEditing] = useState(false);
   const [enabled, setEnabled] = useState(config?.enabled !== false);
   const [interval, setInterval] = useState(config?.interval?.toString() || '60000');
   const [scrapeAllPages, setScrapeAllPages] = useState(config?.scrapeAllPages || false);
@@ -29,20 +28,7 @@ export default function ScraperScheduling({
   const [slackUrl, setSlackUrl] = useState(config?.slack?.webhookUrl || '');
   const [isRunning, setIsRunning] = useState(status?.running || false);
 
-  function getIntervalLabel(ms) {
-    const found = INTERVALS.find(i => i.value === ms);
-    return found ? found.label : `${ms / 1000}s`;
-  }
-
-  async function handleToggleEnabled() {
-    const newEnabled = !enabled;
-    setEnabled(newEnabled);
-    onUpdate({ enabled: newEnabled });
-  }
-
-  async function handleSaveSchedule(e) {
-    e.preventDefault();
-
+  async function handleChange() {
     const updated = {
       enabled,
       interval: parseInt(interval),
@@ -59,8 +45,11 @@ export default function ScraperScheduling({
     };
 
     onUpdate(updated);
-    setIsEditing(false);
   }
+
+  const debouncedUpdate = async () => {
+    await handleChange();
+  };
 
   async function handleRunNow() {
     setIsRunning(true);
@@ -80,222 +69,203 @@ export default function ScraperScheduling({
         Status: {isRunning ? '⏳ Running...' : (enabled ? '🟢 Active' : '🔴 Disabled')}
       </div>
 
-      {!isEditing ? (
-        <>
-          <div className="form-group" style={{ marginTop: '20px' }}>
-            <label>
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={handleToggleEnabled}
-              />
-              {' '}<strong>Scraper Enabled</strong>
-            </label>
-          </div>
+      <div className="form-group" style={{ marginTop: '20px' }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={async (e) => {
+              setEnabled(e.target.checked);
+              await onUpdate({ enabled: e.target.checked });
+            }}
+          />
+          {' '}<strong>Scraper Enabled</strong>
+        </label>
+        <small style={{ display: 'block', marginTop: '5px', color: '#a1aec8' }}>
+          When disabled, the scraper won't run on schedule (manual run still allowed)
+        </small>
+      </div>
 
-          <h3>Current Schedule</h3>
-          <div className="form-group">
-            <label>Interval</label>
-            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
-              {getIntervalLabel(parseInt(interval))}
-            </div>
-          </div>
+      <h3>Scraping Schedule</h3>
+      <div className="form-group">
+        <label htmlFor="interval">Interval</label>
+        <select
+          id="interval"
+          value={interval}
+          onChange={async (e) => {
+            setInterval(e.target.value);
+            await onUpdate({
+              enabled,
+              interval: parseInt(e.target.value),
+              scrapeAllPages,
+              alertMode,
+              discord: { enabled: discordEnabled, webhookUrl: discordUrl },
+              slack: { enabled: slackEnabled, webhookUrl: slackUrl },
+            });
+          }}
+        >
+          {INTERVALS.map(opt => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
-          <h3>Scraping Options</h3>
-          <div className="form-group">
-            <label>Scrape All Pages</label>
-            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
-              {config?.scrapeAllPages ? '✅ Yes' : '❌ No'}
-            </div>
-          </div>
+      <h3>Scraping Options</h3>
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            checked={scrapeAllPages}
+            onChange={async (e) => {
+              setScrapeAllPages(e.target.checked);
+              await onUpdate({
+                enabled,
+                interval: parseInt(interval),
+                scrapeAllPages: e.target.checked,
+                alertMode,
+                discord: { enabled: discordEnabled, webhookUrl: discordUrl },
+                slack: { enabled: slackEnabled, webhookUrl: slackUrl },
+              });
+            }}
+          />
+          {' '}Scrape All Pages
+        </label>
+        <small style={{ display: 'block', marginTop: '5px', color: '#a1aec8' }}>
+          When enabled, scraper will go through all available pages instead of just the first page
+        </small>
+      </div>
 
-          <div className="form-group">
-            <label>Alert Mode</label>
-            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
-              {config?.alertMode === 'newOnly' ? '🆕 New Listings Only' : '📋 All Listings'}
-            </div>
-          </div>
+      <div className="form-group">
+        <label htmlFor="alertMode">Alert Mode</label>
+        <select
+          id="alertMode"
+          value={alertMode}
+          onChange={async (e) => {
+            setAlertMode(e.target.value);
+            await onUpdate({
+              enabled,
+              interval: parseInt(interval),
+              scrapeAllPages,
+              alertMode: e.target.value,
+              discord: { enabled: discordEnabled, webhookUrl: discordUrl },
+              slack: { enabled: slackEnabled, webhookUrl: slackUrl },
+            });
+          }}
+        >
+          <option value="newOnly">🆕 New Listings Only</option>
+          <option value="all">📋 All Listings</option>
+        </select>
+        <small style={{ display: 'block', marginTop: '5px', color: '#a1aec8' }}>
+          "New Only": Only notify about listings not seen before | "All": Notify about every listing found
+        </small>
+      </div>
 
-          <h3>Notifications</h3>
-          <div className="form-group">
-            <label>Discord</label>
-            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
-              {config?.discord?.enabled ? '✅ Enabled' : '❌ Disabled'}
-            </div>
-          </div>
+      <h3>Discord Notifications</h3>
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            checked={discordEnabled}
+            onChange={async (e) => {
+              setDiscordEnabled(e.target.checked);
+              await onUpdate({
+                enabled,
+                interval: parseInt(interval),
+                scrapeAllPages,
+                alertMode,
+                discord: { enabled: e.target.checked, webhookUrl: discordUrl },
+                slack: { enabled: slackEnabled, webhookUrl: slackUrl },
+              });
+            }}
+          />
+          {' '}<strong>Enable Discord</strong>
+        </label>
+      </div>
+      {discordEnabled && (
+        <div className="form-group">
+          <label htmlFor="discordUrl">Webhook URL</label>
+          <input
+            id="discordUrl"
+            type="password"
+            value={discordUrl}
+            onChange={(e) => setDiscordUrl(e.target.value)}
+            onBlur={debouncedUpdate}
+            placeholder="https://discord.com/api/webhooks/..."
+          />
+        </div>
+      )}
 
-          <div className="form-group">
-            <label>Slack</label>
-            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
-              {config?.slack?.enabled ? '✅ Enabled' : '❌ Disabled'}
-            </div>
-          </div>
+      <h3>Slack Notifications</h3>
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            checked={slackEnabled}
+            onChange={async (e) => {
+              setSlackEnabled(e.target.checked);
+              await onUpdate({
+                enabled,
+                interval: parseInt(interval),
+                scrapeAllPages,
+                alertMode,
+                discord: { enabled: discordEnabled, webhookUrl: discordUrl },
+                slack: { enabled: e.target.checked, webhookUrl: slackUrl },
+              });
+            }}
+          />
+          {' '}<strong>Enable Slack</strong>
+        </label>
+      </div>
+      {slackEnabled && (
+        <div className="form-group">
+          <label htmlFor="slackUrl">Webhook URL</label>
+          <input
+            id="slackUrl"
+            type="password"
+            value={slackUrl}
+            onChange={(e) => setSlackUrl(e.target.value)}
+            onBlur={debouncedUpdate}
+            placeholder="https://hooks.slack.com/services/..."
+          />
+        </div>
+      )}
 
-          <div className="button-group">
-            <button
-              className="button button-success"
-              onClick={handleRunNow}
-              disabled={isRunning || !status?.running}
-              title={!status?.running ? 'Start scraper in Scraper Controls first' : 'Trigger immediate run'}
-            >
-              {isRunning ? '⏳ Running...' : '▶️ Run Now'}
-            </button>
-            <button
-              className="button button-primary"
-              onClick={() => setIsEditing(true)}
-            >
-              ⚙️ Configure
-            </button>
-          </div>
+      <div className="button-group">
+        <button
+          className="button button-success"
+          onClick={handleRunNow}
+          disabled={isRunning || !status?.running}
+          title={!status?.running ? 'Start scraper in Scraper Controls first' : 'Trigger immediate run'}
+        >
+          {isRunning ? '⏳ Running...' : '▶️ Run Now'}
+        </button>
+      </div>
 
-          {!status?.running && (
-            <div className="alert alert-warning" style={{ marginTop: '15px' }}>
-              ⚠️ Scraper is stopped. Start it using the <strong>Scraper Controls</strong> panel first.
-            </div>
+      {!status?.running && (
+        <div className="alert alert-warning" style={{ marginTop: '15px' }}>
+          ⚠️ Scraper is stopped. Start it using the <strong>Scraper Controls</strong> panel first.
+        </div>
+      )}
+
+      {status?.lastRun && (
+        <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(216, 180, 254, 0.1)' }}>
+          <h3>Last Run Details</h3>
+          <p style={{ fontSize: '0.9em', color: '#a1aec8', margin: '5px 0' }}>
+            <strong>Time:</strong> {new Date(status.lastRun).toLocaleString()}
+          </p>
+          {status.lastRunDuration && (
+            <p style={{ fontSize: '0.9em', color: '#a1aec8', margin: '5px 0' }}>
+              <strong>Duration:</strong> {(status.lastRunDuration / 1000).toFixed(2)}s
+            </p>
           )}
-
-          {status?.lastRun && (
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(216, 180, 254, 0.1)' }}>
-              <p style={{ fontSize: '0.9em', color: '#a1aec8' }}>
-                <strong>Last Run:</strong> {new Date(status.lastRun).toLocaleString()}
-              </p>
-              {status.lastRunDuration && (
-                <p style={{ fontSize: '0.9em', color: '#a1aec8' }}>
-                  <strong>Duration:</strong> {(status.lastRunDuration / 1000).toFixed(2)}s
-                </p>
-              )}
-              {status.newListingsLastRun > 0 && (
-                <p style={{ fontSize: '0.9em', color: '#86efac' }}>
-                  <strong>New Listings:</strong> {status.newListingsLastRun}
-                </p>
-              )}
-            </div>
+          {status.newListingsLastRun > 0 && (
+            <p style={{ fontSize: '0.9em', color: '#86efac', margin: '5px 0' }}>
+              <strong>New Listings:</strong> {status.newListingsLastRun}
+            </p>
           )}
-        </>
-      ) : (
-        <form onSubmit={handleSaveSchedule}>
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={e => setEnabled(e.target.checked)}
-              />
-              {' '}<strong>Enable Scraper</strong>
-            </label>
-            <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
-              When disabled, the scraper won't run on schedule (manual run still allowed)
-            </small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="interval">Scraping Interval</label>
-            <select
-              id="interval"
-              value={interval}
-              onChange={e => setInterval(e.target.value)}
-            >
-              {INTERVALS.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <h3>Scraping Options</h3>
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={scrapeAllPages}
-                onChange={e => setScrapeAllPages(e.target.checked)}
-              />
-              {' '}Scrape All Pages
-            </label>
-            <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
-              When enabled, scraper will go through all available pages instead of just the first page
-            </small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="alertMode">Alert Mode</label>
-            <select
-              id="alertMode"
-              value={alertMode}
-              onChange={e => setAlertMode(e.target.value)}
-            >
-              <option value="newOnly">New Listings Only</option>
-              <option value="all">All Listings</option>
-            </select>
-            <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
-              "New Only": Only notify about listings not seen before | "All": Notify about every listing found
-            </small>
-          </div>
-
-          <h3>Discord Webhook</h3>
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={discordEnabled}
-                onChange={e => setDiscordEnabled(e.target.checked)}
-              />
-              {' '}Enable Discord Notifications
-            </label>
-          </div>
-          {discordEnabled && (
-            <div className="form-group">
-              <label htmlFor="discordUrl">Discord Webhook URL</label>
-              <input
-                id="discordUrl"
-                type="password"
-                value={discordUrl}
-                onChange={e => setDiscordUrl(e.target.value)}
-                placeholder="https://discord.com/api/webhooks/..."
-                required
-              />
-            </div>
-          )}
-
-          <h3>Slack Webhook</h3>
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={slackEnabled}
-                onChange={e => setSlackEnabled(e.target.checked)}
-              />
-              {' '}Enable Slack Notifications
-            </label>
-          </div>
-          {slackEnabled && (
-            <div className="form-group">
-              <label htmlFor="slackUrl">Slack Webhook URL</label>
-              <input
-                id="slackUrl"
-                type="password"
-                value={slackUrl}
-                onChange={e => setSlackUrl(e.target.value)}
-                placeholder="https://hooks.slack.com/services/..."
-                required
-              />
-            </div>
-          )}
-
-          <div className="button-group">
-            <button type="submit" className="button button-success">
-              ✅ Save Changes
-            </button>
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={() => setIsEditing(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        </div>
       )}
     </div>
   );

@@ -9,7 +9,8 @@
       "Bash(node -c scraper.js)",
       "Bash(node -c app/api/scraper/config/route.js)",
       "Bash(\"d:\\\\Projects\\\\Competitor Scraper\\\\START_HERE.txt\":*)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(npm start)"
     ]
   }
 }

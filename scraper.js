@@ -15,7 +15,6 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 let browser;
-let sentNotificationIds = new Set();
 let scrapeInterval = null;
 let isRunning = false;
 let startTime = null;
@@ -244,7 +243,7 @@ async function scrapeAllPages() {
         const items = [];
         const listItems = document.querySelectorAll('li[data-testid^="listing-card-list-item-"]');
 
-        listItems.forEach((listItem) => {
+        listItems.forEach((listItem, index) => {
           try {
             const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
             if (!cardSection) return;
@@ -269,7 +268,8 @@ async function scrapeAllPages() {
               url: linkEl?.href || '',
               image: imgEl?.src || '',
               description: descriptionEl?.textContent?.trim() || '',
-              scrapedAt: new Date().toISOString()
+              scrapedAt: new Date().toISOString(),
+              order: index + 1
             });
           } catch (e) {
             // Silently skip problematic elements

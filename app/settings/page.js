@@ -2,29 +2,53 @@
 
 import { useState, useEffect } from 'react';
 import SearchParameters from '@/components/SearchParameters';
+import ScraperScheduling from '@/components/ScraperScheduling';
 import styles from './Settings.module.css';
 
 export default function SettingsPage() {
   const [config, setConfig] = useState(null);
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
-    loadConfig();
+    loadData();
   }, []);
 
-  async function loadConfig() {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  async function loadData() {
     try {
       setLoading(true);
-      const res = await fetch('/api/scraper/config');
-      if (res.ok) {
-        setConfig(await res.json());
-      }
+      const [configRes, statusRes] = await Promise.all([
+        fetch('/api/scraper/config'),
+        fetch('/api/scraper/status'),
+      ]);
+
+      if (configRes.ok) setConfig(await configRes.json());
+      if (statusRes.ok) setStatus(await statusRes.json());
     } catch (error) {
-      console.error('Error loading config:', error);
-      showMessage('Failed to load configuration', 'error');
+      console.error('Error loading data:', error);
+      showMessage('Failed to load settings', 'error');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshStatus() {
+    try {
+      const res = await fetch('/api/scraper/status');
+      if (res.ok) {
+        setStatus(await res.json());
+      }
+    } catch (error) {
+      console.error('Error refreshing status:', error);
     }
   }
 
@@ -75,6 +99,13 @@ export default function SettingsPage() {
         <SearchParameters
           config={config}
           onUpdate={handleConfigUpdate}
+        />
+
+        <ScraperScheduling
+          config={config}
+          status={status}
+          onUpdate={handleConfigUpdate}
+          onRun={loadData}
         />
       </div>
     </div>
