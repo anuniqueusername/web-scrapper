@@ -41,13 +41,15 @@
 }
 
 .sidebar {
-  background: white;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid rgba(216, 180, 254, 0.1);
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05);
   height: fit-content;
   position: sticky;
   top: 30px;
+  backdrop-filter: blur(10px);
 }
 
 .main {
@@ -63,17 +65,25 @@
 }
 
 .stat {
-  background: white;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid rgba(216, 180, 254, 0.1);
   border-radius: 8px;
   padding: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.stat:hover {
+  border-color: rgba(216, 180, 254, 0.2);
+  box-shadow: 0 12px 48px rgba(168, 85, 247, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
 }
 
 .label {
-  color: #718096;
+  color: #a1aec8;
   font-size: 0.9em;
   font-weight: 600;
   text-transform: uppercase;
@@ -83,25 +93,32 @@
 .value {
   font-size: 1.8em;
   font-weight: 700;
-  color: #667eea;
+  background: linear-gradient(135deg, #e0e7ff 0%, #d8b4fe 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .tableWrapper {
-  background: white;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid rgba(216, 180, 254, 0.1);
   border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05);
   overflow-x: auto;
+  backdrop-filter: blur(10px);
 }
 
 .loading,
 .empty {
-  background: white;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid rgba(216, 180, 254, 0.1);
   border-radius: 12px;
   padding: 40px;
   text-align: center;
-  color: #718096;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  color: #a1aec8;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
 }
 
 .loading {
@@ -111,11 +128,11 @@
 .empty p {
   font-size: 1.2em;
   margin-bottom: 8px;
-  color: #2d3748;
+  color: #e2e8f0;
 }
 
 .empty small {
-  color: #a0aec0;
+  color: #a1aec8;
 }
 
 @media (max-width: 768px) {
