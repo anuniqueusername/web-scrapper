@@ -4,7 +4,12 @@
       "Bash(npm run send-all)",
       "Bash(npm run facebook)",
       "Bash(npm install next react react-dom axios date-fns)",
-      "Bash(npx next build)"
+      "Bash(npx next build)",
+      "Bash(node -e \":*)",
+      "Bash(node -c scraper.js)",
+      "Bash(node -c app/api/scraper/config/route.js)",
+      "Bash(\"d:\\\\Projects\\\\Competitor Scraper\\\\START_HERE.txt\":*)",
+      "Bash(npm install)"
     ]
   }
 }

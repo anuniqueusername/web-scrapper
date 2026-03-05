@@ -1,13 +1,21 @@
+import { redirect } from 'next/navigation';
+
+export default function Home() {
+  redirect('/dashboard');
+}
+
+/* OLD CODE - Kept as reference
 'use client';
 
 import { useState, useEffect } from 'react';
 import SearchParameters from '@/components/SearchParameters';
 import ScraperScheduling from '@/components/ScraperScheduling';
+import ScraperControls from '@/components/ScraperControls';
 import ResultsFilter from '@/components/ResultsFilter';
 import StatusDashboard from '@/components/StatusDashboard';
 import ListingsTable from '@/components/ListingsTable';
 
-export default function Home() {
+export function OldHome() {
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
   const [listings, setListings] = useState([]);
@@ -23,6 +31,15 @@ export default function Home() {
   // Load initial data
   useEffect(() => {
     loadData();
+  }, []);
+
+  // Auto-refresh status every 5 seconds (only status, not listings)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   async function loadData() {
@@ -44,6 +61,29 @@ export default function Home() {
       showMessage('Failed to load data: ' + error.message, 'error');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshStatus() {
+    try {
+      // Only refresh status, not listings (reduce API calls)
+      const [statusRes, controlRes] = await Promise.all([
+        fetch('/api/scraper/status'),
+        fetch('/api/scraper/control'),
+      ]);
+
+      if (statusRes.ok) {
+        const newStatus = await statusRes.json();
+        setStatus(newStatus);
+      }
+
+      if (controlRes.ok) {
+        const controlStatus = await controlRes.json();
+        // Merge control status with scraper status
+        setStatus(prev => ({ ...prev, ...controlStatus }));
+      }
+    } catch (error) {
+      // Silent fail for auto-refresh
     }
   }
 
@@ -145,7 +185,13 @@ export default function Home() {
         />
       </div>
 
-      <StatusDashboard status={status} config={config} />
+      <div className="main-layout">
+        <ScraperControls
+          status={status}
+          onStatusChange={setStatus}
+        />
+        <StatusDashboard status={status} config={config} />
+      </div>
 
       <div className="card">
         <ResultsFilter
@@ -158,3 +204,4 @@ export default function Home() {
     </div>
   );
 }
+*/

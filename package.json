@@ -4,15 +4,14 @@
   "description": "Kijiji vending machine listings scraper",
   "main": "scraper.js",
   "scripts": {
-    "start": "node scraper.js",
-    "dev": "node scraper.js",
-    "send-all": "node send-all.js",
-    "pool": "node scraper-pool.js",
-    "facebook": "node facebook-scraper-pool.js",
-    "facebook:dev": "node facebook-scraper-pool.js",
-    "web": "next dev",
-    "web:build": "next build",
-    "web:start": "next start"
+    "start": "next dev",
+    "dev": "next dev",
+    "build": "next build",
+    "production": "next start",
+    "legacy:scraper": "node scraper.js",
+    "legacy:pool": "node scraper-pool.js",
+    "legacy:facebook": "node facebook-scraper-pool.js",
+    "legacy:send-all": "node send-all.js"
   },
   "dependencies": {
     "axios": "^1.13.6",

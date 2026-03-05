@@ -57,14 +57,14 @@ export default function SearchParameters({ config, onUpdate }) {
         <>
           <div className="form-group">
             <label>Target URL</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', wordBreak: 'break-all' }}>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', wordBreak: 'break-all', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
               {config?.url}
             </div>
           </div>
 
           <div className="form-group">
             <label>Keywords to Monitor</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px' }}>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
               {config?.filters?.keywords?.length > 0
                 ? config.filters.keywords.join(', ')
                 : 'No keywords set'}
@@ -73,14 +73,14 @@ export default function SearchParameters({ config, onUpdate }) {
 
           <div className="form-group">
             <label>Price Range</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px' }}>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
               {config?.filters?.minPrice || 'Any'} - {config?.filters?.maxPrice || 'Any'}
             </div>
           </div>
 
           <div className="form-group">
             <label>Location Filter</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px' }}>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
               {config?.filters?.location || 'All locations'}
             </div>
           </div>

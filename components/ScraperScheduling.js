@@ -19,22 +19,35 @@ export default function ScraperScheduling({
   onRun,
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [enabled, setEnabled] = useState(config?.enabled !== false);
   const [interval, setInterval] = useState(config?.interval?.toString() || '60000');
+  const [scrapeAllPages, setScrapeAllPages] = useState(config?.scrapeAllPages || false);
+  const [alertMode, setAlertMode] = useState(config?.alertMode || 'newOnly');
   const [discordEnabled, setDiscordEnabled] = useState(config?.discord?.enabled || false);
   const [slackEnabled, setSlackEnabled] = useState(config?.slack?.enabled || false);
   const [discordUrl, setDiscordUrl] = useState(config?.discord?.webhookUrl || '');
   const [slackUrl, setSlackUrl] = useState(config?.slack?.webhookUrl || '');
+  const [isRunning, setIsRunning] = useState(status?.running || false);
 
   function getIntervalLabel(ms) {
     const found = INTERVALS.find(i => i.value === ms);
     return found ? found.label : `${ms / 1000}s`;
   }
 
+  async function handleToggleEnabled() {
+    const newEnabled = !enabled;
+    setEnabled(newEnabled);
+    onUpdate({ enabled: newEnabled });
+  }
+
   async function handleSaveSchedule(e) {
     e.preventDefault();
 
     const updated = {
+      enabled,
       interval: parseInt(interval),
+      scrapeAllPages,
+      alertMode,
       discord: {
         enabled: discordEnabled,
         webhookUrl: discordUrl,
@@ -49,38 +62,71 @@ export default function ScraperScheduling({
     setIsEditing(false);
   }
 
+  async function handleRunNow() {
+    setIsRunning(true);
+    await onRun();
+    setTimeout(() => setIsRunning(false), 2000);
+  }
+
   return (
     <div className="card">
       <h2>⏰ Scheduling & Notifications</h2>
 
       <div className="status-badge" style={{
-        background: status?.running ? '#d4edda' : '#f8d7da',
-        color: status?.running ? '#155724' : '#721c24',
+        background: isRunning ? 'rgba(250, 204, 21, 0.15)' : (enabled ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
+        color: isRunning ? '#facc15' : (enabled ? '#86efac' : '#fca5a5'),
+        borderColor: isRunning ? 'rgba(250, 204, 21, 0.3)' : (enabled ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'),
       }}>
-        Status: {status?.running ? '🟢 Running' : '🔴 Stopped'}
+        Status: {isRunning ? '⏳ Running...' : (enabled ? '🟢 Active' : '🔴 Disabled')}
       </div>
 
       {!isEditing ? (
         <>
+          <div className="form-group" style={{ marginTop: '20px' }}>
+            <label>
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={handleToggleEnabled}
+              />
+              {' '}<strong>Scraper Enabled</strong>
+            </label>
+          </div>
+
           <h3>Current Schedule</h3>
           <div className="form-group">
             <label>Interval</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px' }}>
-              {getIntervalLabel(config?.interval || 60000)}
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
+              {getIntervalLabel(parseInt(interval))}
+            </div>
+          </div>
+
+          <h3>Scraping Options</h3>
+          <div className="form-group">
+            <label>Scrape All Pages</label>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
+              {config?.scrapeAllPages ? '✅ Yes' : '❌ No'}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Alert Mode</label>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
+              {config?.alertMode === 'newOnly' ? '🆕 New Listings Only' : '📋 All Listings'}
             </div>
           </div>
 
           <h3>Notifications</h3>
           <div className="form-group">
             <label>Discord</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px' }}>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
               {config?.discord?.enabled ? '✅ Enabled' : '❌ Disabled'}
             </div>
           </div>
 
           <div className="form-group">
             <label>Slack</label>
-            <div style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px' }}>
+            <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', color: '#e2e8f0', border: '1px solid rgba(216, 180, 254, 0.1)' }}>
               {config?.slack?.enabled ? '✅ Enabled' : '❌ Disabled'}
             </div>
           </div>
@@ -88,10 +134,11 @@ export default function ScraperScheduling({
           <div className="button-group">
             <button
               className="button button-success"
-              onClick={onRun}
-              disabled={status?.running}
+              onClick={handleRunNow}
+              disabled={isRunning || !status?.running}
+              title={!status?.running ? 'Start scraper in Scraper Controls first' : 'Trigger immediate run'}
             >
-              ▶️ Run Now
+              {isRunning ? '⏳ Running...' : '▶️ Run Now'}
             </button>
             <button
               className="button button-primary"
@@ -101,14 +148,25 @@ export default function ScraperScheduling({
             </button>
           </div>
 
+          {!status?.running && (
+            <div className="alert alert-warning" style={{ marginTop: '15px' }}>
+              ⚠️ Scraper is stopped. Start it using the <strong>Scraper Controls</strong> panel first.
+            </div>
+          )}
+
           {status?.lastRun && (
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #ddd' }}>
-              <p style={{ fontSize: '0.9em', color: '#666' }}>
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(216, 180, 254, 0.1)' }}>
+              <p style={{ fontSize: '0.9em', color: '#a1aec8' }}>
                 <strong>Last Run:</strong> {new Date(status.lastRun).toLocaleString()}
               </p>
               {status.lastRunDuration && (
-                <p style={{ fontSize: '0.9em', color: '#666' }}>
+                <p style={{ fontSize: '0.9em', color: '#a1aec8' }}>
                   <strong>Duration:</strong> {(status.lastRunDuration / 1000).toFixed(2)}s
+                </p>
+              )}
+              {status.newListingsLastRun > 0 && (
+                <p style={{ fontSize: '0.9em', color: '#86efac' }}>
+                  <strong>New Listings:</strong> {status.newListingsLastRun}
                 </p>
               )}
             </div>
@@ -116,6 +174,20 @@ export default function ScraperScheduling({
         </>
       ) : (
         <form onSubmit={handleSaveSchedule}>
+          <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={e => setEnabled(e.target.checked)}
+              />
+              {' '}<strong>Enable Scraper</strong>
+            </label>
+            <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
+              When disabled, the scraper won't run on schedule (manual run still allowed)
+            </small>
+          </div>
+
           <div className="form-group">
             <label htmlFor="interval">Scraping Interval</label>
             <select
@@ -129,6 +201,36 @@ export default function ScraperScheduling({
                 </option>
               ))}
             </select>
+          </div>
+
+          <h3>Scraping Options</h3>
+          <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={scrapeAllPages}
+                onChange={e => setScrapeAllPages(e.target.checked)}
+              />
+              {' '}Scrape All Pages
+            </label>
+            <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
+              When enabled, scraper will go through all available pages instead of just the first page
+            </small>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="alertMode">Alert Mode</label>
+            <select
+              id="alertMode"
+              value={alertMode}
+              onChange={e => setAlertMode(e.target.value)}
+            >
+              <option value="newOnly">New Listings Only</option>
+              <option value="all">All Listings</option>
+            </select>
+            <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
+              "New Only": Only notify about listings not seen before | "All": Notify about every listing found
+            </small>
           </div>
 
           <h3>Discord Webhook</h3>
@@ -151,6 +253,7 @@ export default function ScraperScheduling({
                 value={discordUrl}
                 onChange={e => setDiscordUrl(e.target.value)}
                 placeholder="https://discord.com/api/webhooks/..."
+                required
               />
             </div>
           )}
@@ -175,13 +278,14 @@ export default function ScraperScheduling({
                 value={slackUrl}
                 onChange={e => setSlackUrl(e.target.value)}
                 placeholder="https://hooks.slack.com/services/..."
+                required
               />
             </div>
           )}
 
           <div className="button-group">
             <button type="submit" className="button button-success">
-              ✅ Save Schedule
+              ✅ Save Changes
             </button>
             <button
               type="button"

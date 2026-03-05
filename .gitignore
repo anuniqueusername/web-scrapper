@@ -64,12 +64,14 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
+scraper.log
 
 # Runtime data
 pids/
 *.pid
 *.seed
 *.pid.lock
+scraper.pid
 
 # Browser extensions
 .crx

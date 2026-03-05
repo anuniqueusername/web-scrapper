@@ -8,8 +8,10 @@ function getDefaultConfig() {
     url: 'https://www.kijiji.ca/b-canada/vending-machine/k0l0?view=list',
     interval: 60000,
     enabled: false,
+    scrapeAllPages: false,
+    alertMode: 'newOnly',
     discord: {
-      enabled: false,
+      enabled: true,
       webhookUrl: '',
     },
     slack: {
@@ -58,12 +60,17 @@ export async function POST(request) {
     const body = await request.json();
     const config = loadConfig();
 
-    // Update config with new values
+    // Update config with new values, but preserve 'enabled' state if not explicitly set
     const updated = {
       ...config,
       ...body,
       updatedAt: new Date().toISOString(),
     };
+
+    // If user didn't explicitly change 'enabled', keep the current state
+    if (!body.hasOwnProperty('enabled')) {
+      updated.enabled = config.enabled;
+    }
 
     if (saveConfig(updated)) {
       return Response.json({
