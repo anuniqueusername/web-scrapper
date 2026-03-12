@@ -126,7 +126,10 @@ class KijijiWorker {
         this.log(`⚠️  Page returned status ${response.status()}`);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait for listings to be rendered
+      await page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 5000 }).catch(() => {
+        this.log(`⚠️  No listings found, continuing...`);
+      });
       this.log(`Page loaded. Searching for listings...`);
 
       const listings = await page.evaluate(() => {

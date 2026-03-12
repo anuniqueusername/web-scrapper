@@ -85,7 +85,7 @@ export default function ResultsFilter({ filters, onFilterChange }) {
         onClick={handleReset}
         style={{ marginTop: '10px' }}
       >
-        🔄 Reset Filters
+        <i className="fas fa-arrows-rotate"></i> Reset Filters
       </button>
     </>
   );

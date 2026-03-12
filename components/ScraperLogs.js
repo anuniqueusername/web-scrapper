@@ -47,7 +47,7 @@ export default function ScraperLogs() {
 
   return (
     <div className="card">
-      <h2>📝 Scraper Logs</h2>
+      <h2><i className="fas fa-file-lines"></i> Scraper Logs</h2>
 
       <div className="button-group">
         <button
@@ -55,14 +55,14 @@ export default function ScraperLogs() {
           onClick={loadLogs}
           disabled={loading}
         >
-          🔄 Refresh
+          <i className="fas fa-arrows-rotate"></i> Refresh
         </button>
         <button
           className="button button-secondary"
           onClick={downloadLogs}
           disabled={!logs}
         >
-          ⬇️ Download
+          <i className="fas fa-download"></i> Download
         </button>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#e2e8f0', fontWeight: '500', margin: '0' }}>
           <input

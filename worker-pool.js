@@ -3,7 +3,7 @@ const KijijiWorker = require('./worker');
 class WorkerPool {
   constructor(config = {}) {
     this.numWorkers = config.numWorkers || 1;
-    this.scraperInterval = config.scraperInterval || 60000; // 60 seconds
+    this.scraperInterval = config.scraperInterval || 60000; // 1 minute
     this.discordWebhookUrl = config.discordWebhookUrl;
     this.outputFile = config.outputFile;
     this.url = config.url;

@@ -32,7 +32,7 @@ function loadConfig() {
   // Return default config
   return {
     url: 'https://www.kijiji.ca/b-canada/vending-machine/k0l0?view=list',
-    interval: 30000,
+    interval: 60000,
     enabled: true,
     scrapeAllPages: false,
     alertMode: 'newOnly',
@@ -236,7 +236,10 @@ async function scrapeAllPages() {
         throw new Error(`Page ${currentPage} returned status ${response.status()}`);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for listings to be rendered
+      await page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 5000 }).catch(() => {
+        console.log(`[${new Date().toISOString()}] ⚠️  No listings found on page ${currentPage}, continuing...`);
+      });
 
       // Extract listings and pagination info
       const pageData = await page.evaluate(() => {

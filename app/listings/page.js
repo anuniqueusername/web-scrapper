@@ -96,7 +96,7 @@ export default function ListingsPage() {
   return (
     <div className={styles.listings}>
       <header className={styles.header}>
-        <h1>📋 Listings</h1>
+        <h1><i className="fas fa-list"></i> Listings</h1>
         <p>View and filter scraped listings</p>
       </header>
 

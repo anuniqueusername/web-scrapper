@@ -18,7 +18,7 @@ export default function StatusDashboard({ status, config }) {
 
   return (
     <div className="card">
-      <h2>📊 Scraper Status</h2>
+      <h2><i className="fas fa-chart-line"></i> Scraper Status</h2>
 
       <div className="stats-grid">
         <div className="stat-box">

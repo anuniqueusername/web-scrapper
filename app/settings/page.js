@@ -85,7 +85,7 @@ export default function SettingsPage() {
   return (
     <div className={styles.settings}>
       <header className={styles.header}>
-        <h1>⚙️ Settings</h1>
+        <h1><i className="fas fa-gear"></i> Settings</h1>
         <p>Configure your scraper parameters and notifications</p>
       </header>
 

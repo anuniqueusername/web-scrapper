@@ -49,7 +49,7 @@ export default function ScraperControls({ status, onStatusChange }) {
 
   return (
     <div className="card">
-      <h2>🎮 Scraper Controls</h2>
+      <h2><i className="fas fa-gamepad"></i> Scraper Controls</h2>
 
       {message && (
         <div className={`alert alert-${message.type}`} style={{ marginBottom: '15px' }}>
@@ -63,7 +63,7 @@ export default function ScraperControls({ status, onStatusChange }) {
         borderColor: isRunning ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
         marginBottom: '20px',
       }}>
-        Status: {isRunning ? '🟢 Running' : '🔴 Stopped'}
+        Status: {isRunning ? <><i className="fas fa-circle" style={{color: '#86efac', marginRight: '8px'}}></i>Running</> : <><i className="fas fa-circle" style={{color: '#fca5a5', marginRight: '8px'}}></i>Stopped</>}
       </div>
 
       {status?.pid && (
@@ -78,7 +78,7 @@ export default function ScraperControls({ status, onStatusChange }) {
           onClick={() => handleAction('start')}
           disabled={loading || isRunning}
         >
-          {loading ? '⏳ Starting...' : '▶️ Start Scraper'}
+          {loading ? <><i className="fas fa-spinner fa-spin"></i> Starting...</> : <><i className="fas fa-play"></i> Start Scraper</>}
         </button>
 
         <button
@@ -86,7 +86,7 @@ export default function ScraperControls({ status, onStatusChange }) {
           onClick={() => handleAction('stop')}
           disabled={loading || !isRunning}
         >
-          {loading ? '⏳ Stopping...' : '⏹️ Stop Scraper'}
+          {loading ? <><i className="fas fa-spinner fa-spin"></i> Stopping...</> : <><i className="fas fa-stop"></i> Stop Scraper</>}
         </button>
 
         <button
@@ -94,7 +94,7 @@ export default function ScraperControls({ status, onStatusChange }) {
           onClick={() => handleAction('restart')}
           disabled={loading}
         >
-          {loading ? '⏳ Restarting...' : '🔄 Restart Scraper'}
+          {loading ? <><i className="fas fa-spinner fa-spin"></i> Restarting...</> : <><i className="fas fa-arrows-rotate"></i> Restart Scraper</>}
         </button>
       </div>
 

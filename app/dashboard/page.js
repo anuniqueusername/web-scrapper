@@ -10,6 +10,7 @@ import styles from './Dashboard.module.css';
 export default function DashboardPage() {
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
+  const [facebookStatus, setFacebookStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,13 +28,15 @@ export default function DashboardPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const [configRes, statusRes] = await Promise.all([
+      const [configRes, statusRes, facebookRes] = await Promise.all([
         fetch('/api/scraper/config'),
         fetch('/api/scraper/status'),
+        fetch('/api/facebook/control'),
       ]);
 
       if (configRes.ok) setConfig(await configRes.json());
       if (statusRes.ok) setStatus(await statusRes.json());
+      if (facebookRes.ok) setFacebookStatus(await facebookRes.json());
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -43,9 +46,10 @@ export default function DashboardPage() {
 
   async function refreshStatus() {
     try {
-      const [statusRes, controlRes] = await Promise.all([
+      const [statusRes, controlRes, facebookRes] = await Promise.all([
         fetch('/api/scraper/status'),
         fetch('/api/scraper/control'),
+        fetch('/api/facebook/control'),
       ]);
 
       if (statusRes.ok) {
@@ -56,6 +60,11 @@ export default function DashboardPage() {
       if (controlRes.ok) {
         const controlStatus = await controlRes.json();
         setStatus(prev => ({ ...prev, ...controlStatus }));
+      }
+
+      if (facebookRes.ok) {
+        const newFacebookStatus = await facebookRes.json();
+        setFacebookStatus(newFacebookStatus);
       }
     } catch (error) {
       console.error('Error refreshing status:', error);
@@ -86,7 +95,7 @@ export default function DashboardPage() {
   return (
     <div className={styles.dashboard}>
       <header className={styles.header}>
-        <h1>📊 Dashboard</h1>
+        <h1><i className="fas fa-chart-line"></i> Dashboard</h1>
         <p>Monitor your Kijiji scraper in real-time</p>
       </header>
 
@@ -96,7 +105,10 @@ export default function DashboardPage() {
           onStatusChange={(newStatus) => setStatus(newStatus)}
         />
 
-        <FacebookScraper />
+        <FacebookScraper
+          status={facebookStatus}
+          onStatusChange={(newStatus) => setFacebookStatus(newStatus)}
+        />
 
         <StatusDashboard status={status} />
 

@@ -66,7 +66,7 @@ export default function ScraperScheduling({
         color: isRunning ? '#facc15' : (enabled ? '#86efac' : '#fca5a5'),
         borderColor: isRunning ? 'rgba(250, 204, 21, 0.3)' : (enabled ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'),
       }}>
-        Status: {isRunning ? '⏳ Running...' : (enabled ? '🟢 Active' : '🔴 Disabled')}
+        Status: {isRunning ? <><i className="fas fa-spinner fa-spin"></i> Running...</> : (enabled ? <><i className="fas fa-circle" style={{color: '#86efac'}}></i> Active</> : <><i className="fas fa-circle" style={{color: '#fca5a5'}}></i> Disabled</>)}
       </div>
 
       <div className="form-group" style={{ marginTop: '20px' }}>
@@ -154,8 +154,8 @@ export default function ScraperScheduling({
             });
           }}
         >
-          <option value="newOnly">🆕 New Listings Only</option>
-          <option value="all">📋 All Listings</option>
+          <option value="newOnly"><i className="fas fa-star"></i> New Listings Only</option>
+          <option value="all"><i className="fas fa-list"></i> All Listings</option>
         </select>
         <small style={{ display: 'block', marginTop: '5px', color: '#a1aec8' }}>
           "New Only": Only notify about listings not seen before | "All": Notify about every listing found
@@ -239,7 +239,7 @@ export default function ScraperScheduling({
           disabled={isRunning || !status?.running}
           title={!status?.running ? 'Start scraper in Scraper Controls first' : 'Trigger immediate run'}
         >
-          {isRunning ? '⏳ Running...' : '▶️ Run Now'}
+          {isRunning ? <><i className="fas fa-spinner fa-spin"></i> Running...</> : <><i className="fas fa-play"></i> Run Now</>}
         </button>
       </div>
 

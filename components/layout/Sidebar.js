@@ -8,16 +8,16 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   const navItems = [
-    { href: '/dashboard', label: '📊 Dashboard', icon: '📊' },
-    { href: '/settings', label: '⚙️ Settings', icon: '⚙️' },
-    { href: '/listings', label: '📋 Listings', icon: '📋' },
-    { href: '/logs', label: '📝 Logs', icon: '📝' },
+    { href: '/dashboard', label: 'Dashboard', icon: 'fa-chart-line' },
+    { href: '/settings', label: 'Settings', icon: 'fa-gear' },
+    { href: '/listings', label: 'Listings', icon: 'fa-list' },
+    { href: '/logs', label: 'Logs', icon: 'fa-file-lines' },
   ];
 
   return (
     <aside className={styles.sidebar}>
       <div className={styles.header}>
-        <h1>🕷️ Scraper</h1>
+        <h1><i className="fas fa-spider"></i> Scraper</h1>
       </div>
 
       <nav className={styles.nav}>
@@ -30,7 +30,7 @@ export default function Sidebar() {
                   pathname === item.href ? styles.active : ''
                 }`}
               >
-                <span className={styles.icon}>{item.icon}</span>
+                <span className={styles.icon}><i className={`fas ${item.icon}`}></i></span>
                 <span>{item.label}</span>
               </Link>
             </li>
