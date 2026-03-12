@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import StatusDashboard from '@/components/StatusDashboard';
 import ScraperControls from '@/components/ScraperControls';
 import ScraperLogs from '@/components/ScraperLogs';
+import FacebookScraper from '@/components/FacebookScraper';
 import styles from './Dashboard.module.css';
 
 export default function DashboardPage() {
@@ -94,6 +95,8 @@ export default function DashboardPage() {
           status={status}
           onStatusChange={(newStatus) => setStatus(newStatus)}
         />
+
+        <FacebookScraper />
 
         <StatusDashboard status={status} />
 

@@ -36,7 +36,7 @@ const ONTARIO_CITIES = [
   'aurora'
 ];
 
-class FacebookWorker {
+class FacebookAPIScraper {
   constructor(workerId, config = {}) {
     this.workerId = workerId;
     this.browser = null;
@@ -47,6 +47,7 @@ class FacebookWorker {
     this.delayBetweenCities = config.delayBetweenCities || 2000; // Delay in ms between city scrapes
     this.currentCityIndex = 0;
     this.isRunning = false;
+    this.capturedRequests = [];
   }
 
   // Build URL for a specific city
@@ -139,7 +140,7 @@ class FacebookWorker {
       });
 
       const payload = {
-        content: `🔔 **[Worker ${this.workerId}] ${newListings.length} New Facebook Marketplace Listing(s) Found!**`
+        content: `🔔 **[API Scraper ${this.workerId}] ${newListings.length} New Facebook Marketplace Listing(s) Found!**`
       };
 
       if (embeds.length > 0) {
@@ -153,11 +154,6 @@ class FacebookWorker {
       });
 
       this.log(`✅ Discord message sent successfully! Status: ${response.status}`);
-      this.log(`📝 Details: ${newListings.length} listing(s) with ${embeds.length} embed(s)`);
-      this.log(`📋 Listings sent:`);
-      newListings.forEach((listing, index) => {
-        this.log(`   ${index + 1}. "${listing.title}" - ${listing.price} (${listing.location})`);
-      });
     } catch (error) {
       this.log(`❌ Error sending Discord notification:`, error.message);
     }
@@ -172,7 +168,7 @@ class FacebookWorker {
       const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
       this.log(`💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
-      this.log(`Starting scrape for: ${url}`);
+      this.log(`Starting API-based scrape for: ${url}`);
 
       await this.init();
       page = await this.browser.newPage();
@@ -193,39 +189,104 @@ class FacebookWorker {
         });
       });
 
+      // Intercept all requests to capture API calls
+      const self = this;
+      await page.on('response', async (response) => {
+        try {
+          const request = response.request();
+          const url = response.url();
+          const status = response.status();
+
+          // Log all requests for debugging
+          if (url.includes('graphql') || url.includes('/api/')) {
+            self.log(`📡 API Request: ${url.substring(0, 100)}... (${status})`);
+
+            if (status === 200) {
+              try {
+                const body = await response.text();
+
+                // Check if response contains marketplace/listing data
+                if (body && (body.includes('Listing') || body.includes('marketplace') || body.includes('item'))) {
+                  self.capturedRequests.push({
+                    url: url,
+                    method: request.method(),
+                    status: status,
+                    timestamp: new Date().toISOString(),
+                    responseSize: body.length,
+                    bodyPreview: body.substring(0, 1000),
+                    hasListingData: body.includes('Listing') || body.includes('marketplace')
+                  });
+                  self.log(`✅ Captured GraphQL API call with listing data (${body.length} bytes)`);
+                }
+              } catch (e) {
+                self.log(`⚠️  Could not read response body: ${e.message}`);
+              }
+            }
+          }
+        } catch (e) {
+          // Silently ignore
+        }
+      });
+
       this.log(`Navigating to ${url}...`);
       const response = await page.goto(url, { waitUntil: 'networkidle0' });
       this.log(`HTTP Status: ${response.status()}`);
 
-      if (!response.ok()) {
-        this.log(`⚠️  Page returned status ${response.status()}`);
-      }
+      // Wait for React to fully render and API calls to complete
+      // Also intercept request data (for POST requests with GraphQL queries)
+      page.on('request', (request) => {
+        try {
+          const url = request.url();
+          const method = request.method();
 
-      // Wait longer for React to fully render content
-      this.log(`Waiting for content to render...`);
-      await new Promise(resolve => setTimeout(resolve, 8000));
+          if ((url.includes('graphql') || url.includes('/api/')) && method === 'POST') {
+            try {
+              const postData = request.postData();
+              if (postData && (postData.includes('Listing') || postData.includes('marketplace'))) {
+                this.log(`📤 GraphQL POST request captured (${postData.length} bytes)`);
+                this.capturedRequests.push({
+                  type: 'POST_REQUEST',
+                  url: url,
+                  method: method,
+                  timestamp: new Date().toISOString(),
+                  postDataSize: postData.length,
+                  postDataPreview: postData.substring(0, 500)
+                });
+              }
+            } catch (e) {
+              // Silently ignore
+            }
+          }
+        } catch (e) {
+          // Silently ignore
+        }
+      });
 
-      // Real-time streaming: collect results as they load during scrolling
-      this.log(`Streaming results as page loads...`);
+      this.log(`Waiting for API calls to complete...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Extract listings from DOM (which was populated by API)
       let scrollCount = 0;
-      const maxScrolls = 30;
+      const maxScrolls = 20;
       let noNewContentCount = 0;
       const maxNoNewContentIterations = 3;
       const vendingKeywords = ['vending', 'machine', 'vendor'];
       let previousCount = 0;
 
+      this.log(`Streaming results as page loads...`);
+
       while (scrollCount < maxScrolls) {
-        // Scroll down
+        // Scroll down to trigger more API calls
         await page.evaluate(() => {
           window.scrollBy(0, window.innerHeight);
         });
 
-        // Wait for lazy-loaded content to render
+        // Wait for lazy-loaded API content to render
         await new Promise(resolve => setTimeout(resolve, 4000));
 
         scrollCount++;
 
-        // Stream extract: get ALL current listings (incremental, not just new ones)
+        // Extract current listings
         const streamData = await page.evaluate((keywords) => {
           const marketplaceLinks = Array.from(document.querySelectorAll('a[href*="/marketplace/item/"]'));
           let vendingCount = 0;
@@ -246,7 +307,6 @@ class FacebookWorker {
         const relevancePercentage = streamData.totalItems > 0 ? Math.round((streamData.vendingItems / streamData.totalItems) * 100) : 0;
         const newItemsFound = streamData.totalItems - previousCount;
 
-        // Log streaming progress
         if (newItemsFound > 0) {
           this.log(`⬇️  Scroll ${scrollCount}: +${newItemsFound} items → ${streamData.totalItems} total (${relevancePercentage}% vending)`);
           noNewContentCount = 0;
@@ -274,22 +334,10 @@ class FacebookWorker {
       // Wait for final renders
       await new Promise(resolve => setTimeout(resolve, 3000));
 
-      // Wait for final renders
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
       this.log(`✅ Scrolling complete. Now extracting all listings from page...`);
 
-      // Debug: Save page content for inspection
-      const pageContent = await page.content();
-      const debugFile = path.join(path.dirname(this.outputFile), 'facebook-debug.html');
-      fs.writeFileSync(debugFile, pageContent);
-      this.log(`📄 Page content saved to ${debugFile}`);
-
-      // Now extract ALL listings from the fully loaded page
+      // Extract ALL listings from the fully loaded page
       const allListings = await page.evaluate((cityName) => {
-        // List of USA state abbreviations to filter out
-        const usaStates = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
-
         const items = [];
         const seenIds = new Set();
 
@@ -346,13 +394,6 @@ class FacebookWorker {
               }
             }
 
-            // Filter out USA states - check if location contains a USA state abbreviation
-            const locationUpper = location.toUpperCase();
-            const hasUsaState = usaStates.some(state => locationUpper.includes(state));
-            if (hasUsaState) {
-              return; // Skip this listing
-            }
-
             seenIds.add(id);
             items.push({
               id: id,
@@ -377,22 +418,29 @@ class FacebookWorker {
 
       this.log(`🔍 Extracted ${allListings.length} listings from fully loaded page`);
 
+      // Log extracted listings
+      if (allListings.length > 0) {
+        this.log(`📋 Extracted listings:`);
+        allListings.forEach((listing, index) => {
+          this.log(`   ${index + 1}. "${listing.title}" - ${listing.price} | ${listing.location}`);
+        });
+      }
+
+      // Save API calls info
+      if (this.capturedRequests.length > 0) {
+        const apiLogFile = path.join(path.dirname(this.outputFile), 'facebook-api-calls.json');
+        fs.writeFileSync(apiLogFile, JSON.stringify(this.capturedRequests, null, 2));
+        this.log(`📡 Captured ${this.capturedRequests.length} API calls, saved to ${apiLogFile}`);
+      }
+
       // Load existing data from file
       let savedListings = [];
       if (fs.existsSync(this.outputFile)) {
-        try {
-          const fileContent = fs.readFileSync(this.outputFile, 'utf-8').trim();
-          if (fileContent) {
-            const existingData = JSON.parse(fileContent);
-            savedListings = Array.isArray(existingData) ? existingData : [];
-          }
-        } catch (parseError) {
-          this.log(`⚠️  Could not parse existing listings file, starting fresh`);
-          savedListings = [];
-        }
+        const existingData = JSON.parse(fs.readFileSync(this.outputFile, 'utf-8'));
+        savedListings = Array.isArray(existingData) ? existingData : [];
       }
 
-      // Merge with listings found during scroll
+      // Merge with listings found
       const existingIds = new Set(savedListings.map(l => l.id));
       const newListings = allListings.filter(l => !existingIds.has(l.id));
 
@@ -478,15 +526,8 @@ class FacebookWorker {
 
   log(message, details = '') {
     const timestamp = new Date().toISOString();
-    const memUsage = process.memoryUsage();
-    const usedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-    const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
-    const cpuUsage = process.cpuUsage();
-    const totalCPU = ((cpuUsage.user + cpuUsage.system) / 1000).toFixed(2); // Total CPU in milliseconds
-    const cpuPercent = ((totalCPU / 1000) * 100).toFixed(1); // Convert to percentage (assuming 1 second = 100%)
-
-    console.log(`[${timestamp}] [Worker ${this.workerId}] [CPU: ${cpuPercent}%] [Mem: ${usedMB}MB/${totalMB}MB] ${message} ${details}`);
+    console.log(`[${timestamp}] [Facebook API Scraper ${this.workerId}] ${message} ${details}`);
   }
 }
 
-module.exports = FacebookWorker;
+module.exports = FacebookAPIScraper;

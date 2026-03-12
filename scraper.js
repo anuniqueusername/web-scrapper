@@ -301,6 +301,16 @@ async function scrapeAllPages() {
       }
     }
 
+    // Deduplicate listings within this scrape (same listing appears on multiple pages)
+    const seenInScrape = new Set();
+    const uniquePageListings = [];
+    for (const listing of allPageListings) {
+      if (!seenInScrape.has(listing.id)) {
+        seenInScrape.add(listing.id);
+        uniquePageListings.push(listing);
+      }
+    }
+
     // Load existing data
     let allListings = [];
     if (fs.existsSync(OUTPUT_FILE)) {
@@ -310,7 +320,7 @@ async function scrapeAllPages() {
 
     // Merge new listings with existing ones (avoid duplicates)
     const existingIds = new Set(allListings.map(l => l.id));
-    const newListings = allPageListings.filter(l => l.id && !existingIds.has(l.id));
+    const newListings = uniquePageListings.filter(l => l.id && !existingIds.has(l.id));
 
     allListings.push(...newListings);
 
@@ -319,7 +329,7 @@ async function scrapeAllPages() {
 
     const duration = Date.now() - scrapeStartTime;
 
-    console.log(`[${new Date().toISOString()}] ✅ Multi-page scrape complete. Found ${allPageListings.length} total listings across ${currentPage} page(s). Added ${newListings.length} new. Total: ${allListings.length}`);
+    console.log(`[${new Date().toISOString()}] ✅ Multi-page scrape complete. Found ${allPageListings.length} listings across ${currentPage} page(s), ${uniquePageListings.length} unique. Added ${newListings.length} new. Total: ${allListings.length}`);
 
     // Update status in UI
     saveStatus({

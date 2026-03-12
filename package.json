@@ -11,10 +11,13 @@
     "legacy:scraper": "node scraper.js",
     "legacy:pool": "node scraper-pool.js",
     "legacy:facebook": "node facebook-scraper-pool.js",
+    "legacy:facebook-worker": "node facebook-worker-runner.js",
+    "legacy:facebook-api": "node facebook-api-scraper-runner.js",
     "legacy:send-all": "node send-all.js"
   },
   "dependencies": {
     "axios": "^1.13.6",
+    "better-sqlite3": "^12.6.2",
     "date-fns": "^4.1.0",
     "dotenv": "^16.3.1",
     "next": "^16.1.6",
