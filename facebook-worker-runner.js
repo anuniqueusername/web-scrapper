@@ -30,6 +30,7 @@ const workerAllCities = new FacebookWorker(3, {
     'burlington', 'niagara-falls', 'st-catharines', 'peterborough', 'kingston',
     'belleville', 'oshawa', 'whitby', 'ajax', 'pickering', 'aurora'
   ],
+  delayBetweenCities: 2000,
   discordWebhookUrl: discordWebhookUrl
 });
 

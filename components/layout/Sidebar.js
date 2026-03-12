@@ -15,32 +15,53 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.header}>
-        <h1><i className="fas fa-spider"></i> Scraper</h1>
-      </div>
+    <>
+      {/* Desktop Sidebar */}
+      <aside className={styles.sidebar}>
+        <div className={styles.header}>
+          <h1><i className="fas fa-spider"></i> Scraper</h1>
+        </div>
 
-      <nav className={styles.nav}>
-        <ul className={styles.navList}>
+        <nav className={styles.nav}>
+          <ul className={styles.navList}>
+            {navItems.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`${styles.navLink} ${
+                    pathname === item.href ? styles.active : ''
+                  }`}
+                >
+                  <span className={styles.icon}><i className={`fas ${item.icon}`}></i></span>
+                  <span>{item.label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className={styles.footer}>
+          <p>v1.0.0</p>
+        </div>
+      </aside>
+
+      {/* Mobile Header Bar — horizontal scrollable nav tabs */}
+      <header className={styles.mobileHeader}>
+        <nav className={styles.mobileNav} aria-label="Mobile navigation">
           {navItems.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className={`${styles.navLink} ${
-                  pathname === item.href ? styles.active : ''
-                }`}
-              >
-                <span className={styles.icon}><i className={`fas ${item.icon}`}></i></span>
-                <span>{item.label}</span>
-              </Link>
-            </li>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`${styles.mobileNavLink} ${
+                pathname === item.href ? styles.mobileNavLinkActive : ''
+              }`}
+            >
+              <i className={`fas ${item.icon} ${styles.mobileNavIcon}`}></i>
+              <span className={styles.mobileNavLabel}>{item.label}</span>
+            </Link>
           ))}
-        </ul>
-      </nav>
-
-      <div className={styles.footer}>
-        <p>v1.0.0</p>
-      </div>
-    </aside>
+        </nav>
+      </header>
+    </>
   );
 }

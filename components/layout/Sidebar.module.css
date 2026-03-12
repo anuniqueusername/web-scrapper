@@ -1,3 +1,4 @@
+/* ── Desktop Sidebar ─────────────────────────────────────────── */
 .sidebar {
   position: fixed;
   left: 0;
@@ -60,7 +61,6 @@
 .navLink:hover {
   background-color: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.95);
-  transform: translateX(4px);
 }
 
 .navLink.active {
@@ -84,18 +84,88 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(0, 0, 0, 0.2) 100%);
 }
 
+/* ── Mobile Header Bar ───────────────────────────────────────── */
+.mobileHeader {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border-bottom: 1px solid rgba(216, 180, 254, 0.1);
+  z-index: 900;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+/* ── Mobile Nav Row ──────────────────────────────────────────── */
+.mobileNav {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Hide scrollbar across all browsers */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Ensure tabs are never clipped on narrow screens */
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobileNav::-webkit-scrollbar {
+  display: none;
+}
+
+.mobileNavLink {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  /* Equal flex share up to 4 items; min-width prevents collapse on overflow */
+  flex: 1 0 72px;
+  padding: 0 12px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  white-space: nowrap;
+}
+
+.mobileNavLink:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mobileNavLinkActive {
+  color: #d8b4fe;
+  border-bottom-color: #c084fc;
+  background: linear-gradient(180deg, transparent 0%, rgba(216, 180, 254, 0.08) 100%);
+}
+
+.mobileNavIcon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.mobileNavLabel {
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ── Responsive Breakpoint ───────────────────────────────────── */
 @media (max-width: 768px) {
+  /* Hide the desktop sidebar */
   .sidebar {
-    width: 220px;
+    display: none;
   }
 
-  .header h1 {
-    font-size: 18px;
-  }
-
-  .navLink {
-    padding: 12px 16px;
-    font-size: 13px;
-    gap: 10px;
+  /* Show mobile header bar */
+  .mobileHeader {
+    display: block;
   }
 }

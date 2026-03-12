@@ -3,6 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+const LOG_FILE = path.join(__dirname, 'facebook-scraper.log');
+
+function appendToLog(line) {
+  try {
+    fs.appendFileSync(LOG_FILE, line + '\n', 'utf-8');
+  } catch (e) {
+    // Silently ignore log write failures so scraping is never blocked
+  }
+}
+
 // Major Ontario cities for Facebook Marketplace scraping
 const ONTARIO_CITIES = [
   'toronto',
@@ -485,7 +495,9 @@ class FacebookWorker {
     const totalCPU = ((cpuUsage.user + cpuUsage.system) / 1000).toFixed(2); // Total CPU in milliseconds
     const cpuPercent = ((totalCPU / 1000) * 100).toFixed(1); // Convert to percentage (assuming 1 second = 100%)
 
-    console.log(`[${timestamp}] [Worker ${this.workerId}] [CPU: ${cpuPercent}%] [Mem: ${usedMB}MB/${totalMB}MB] ${message} ${details}`);
+    const line = `[${timestamp}] [Worker ${this.workerId}] [CPU: ${cpuPercent}%] [Mem: ${usedMB}MB/${totalMB}MB] ${message} ${details}`;
+    console.log(line);
+    appendToLog(line);
   }
 }
 

@@ -3,6 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+const LOG_FILE = path.join(__dirname, 'facebook-scraper.log');
+
+function appendToLog(line) {
+  try {
+    fs.appendFileSync(LOG_FILE, line + '\n', 'utf-8');
+  } catch (e) {
+    // Silently ignore log write failures so scraping is never blocked
+  }
+}
+
 // Major Ontario cities for Facebook Marketplace scraping
 const ONTARIO_CITIES = [
   'toronto',
@@ -526,7 +536,9 @@ class FacebookAPIScraper {
 
   log(message, details = '') {
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [Facebook API Scraper ${this.workerId}] ${message} ${details}`);
+    const line = `[${timestamp}] [Facebook API Scraper ${this.workerId}] ${message} ${details}`;
+    console.log(line);
+    appendToLog(line);
   }
 }
 

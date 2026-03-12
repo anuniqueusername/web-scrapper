@@ -154,8 +154,8 @@ export default function ScraperScheduling({
             });
           }}
         >
-          <option value="newOnly"><i className="fas fa-star"></i> New Listings Only</option>
-          <option value="all"><i className="fas fa-list"></i> All Listings</option>
+          <option value="newOnly">★ New Listings Only</option>
+          <option value="all">≡ All Listings</option>
         </select>
         <small style={{ display: 'block', marginTop: '5px', color: '#a1aec8' }}>
           "New Only": Only notify about listings not seen before | "All": Notify about every listing found
