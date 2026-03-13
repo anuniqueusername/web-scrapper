@@ -34,6 +34,65 @@
   font-weight: 400;
 }
 
+/* ── Source tabs ────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid rgba(216, 180, 254, 0.1);
+  padding-bottom: 0;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #a1aec8;
+  font-size: 0.95em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  bottom: -1px;
+  letter-spacing: 0.2px;
+}
+
+.tab:hover {
+  color: #c7d2fe;
+}
+
+.tabActive {
+  color: #d8b4fe;
+  border-bottom-color: #c084fc;
+}
+
+.tabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 0.75em;
+  font-weight: 700;
+  background: rgba(216, 180, 254, 0.12);
+  color: #a1aec8;
+  line-height: 1;
+}
+
+.tabActive .tabCount {
+  background: rgba(192, 132, 252, 0.2);
+  color: #d8b4fe;
+}
+
+/* ── Layout grid ────────────────────────────────────────────────────────── */
+
 .container {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -79,7 +138,6 @@
 .stat:hover {
   border-color: rgba(216, 180, 254, 0.2);
   box-shadow: 0 12px 48px rgba(168, 85, 247, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.08);
-  transform: translateY(-2px);
 }
 
 .label {
@@ -151,5 +209,16 @@
 
   .header h1 {
     font-size: 1.8em;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab {
+    padding: 10px 14px;
+    font-size: 0.88em;
+    white-space: nowrap;
   }
 }

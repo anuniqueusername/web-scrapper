@@ -95,13 +95,181 @@ async function initBrowser() {
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // Disable /dev/shm to reduce memory usage
+        '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
         '--single-process=false'
       ]
     });
   }
   return browser;
+}
+
+/**
+ * Detect whether a Kijiji URL is a category browse URL (e.g. /b-laptops/canada/c773l0)
+ * vs a keyword search URL (e.g. /b-canada/vending-machine/k0l0).
+ * Category URLs use path-based pagination: /page-N/ inserted before the category code segment.
+ * Search/keyword URLs use query-based pagination: ?page=N.
+ */
+function buildKijijiPageUrl(baseUrl, pageNum) {
+  if (pageNum === 1) return baseUrl;
+
+  // Category browse URLs contain a category code segment like c773l0 or c0l0 at the end of the path.
+  // Pattern: path ends with /cNNN or /cNNNlNNN (category+location code).
+  const urlObj = new URL(baseUrl);
+  const categoryCodePattern = /\/c\d+l?\d*\/?$/;
+
+  if (categoryCodePattern.test(urlObj.pathname)) {
+    // Inject /page-N/ before the category code segment
+    // e.g. /b-laptops/canada/c773l0 -> /b-laptops/canada/page-2/c773l0
+    const newPathname = urlObj.pathname.replace(
+      /(\/c\d+l?\d*\/?$)/,
+      `/page-${pageNum}$1`
+    );
+    urlObj.pathname = newPathname;
+    return urlObj.toString();
+  }
+
+  // Keyword search URLs: use ?page=N query param
+  if (urlObj.searchParams.has('page')) {
+    urlObj.searchParams.set('page', pageNum);
+  } else {
+    urlObj.searchParams.append('page', pageNum);
+  }
+  return urlObj.toString();
+}
+
+/**
+ * Extract listings from the current page using a multi-strategy selector chain.
+ * Strategy 1 (primary):  li[data-testid^="listing-card-list-item-"] > section[data-testid="listing-card"]
+ * Strategy 2 (fallback): section[data-testid="listing-card"] anywhere on the page
+ * Strategy 3 (fallback): article elements with a data-listingid attribute
+ *
+ * Returns an array of listing objects and a diagnostics string for logging.
+ */
+async function extractListingsFromPage(page) {
+  return page.evaluate(() => {
+    const items = [];
+
+    // --- Strategy 1: standard list-view structure ---
+    const listItems = document.querySelectorAll('li[data-testid^="listing-card-list-item-"]');
+
+    if (listItems.length > 0) {
+      listItems.forEach((listItem, index) => {
+        try {
+          const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
+          if (!cardSection) return;
+
+          const listingId = cardSection.getAttribute('data-listingid');
+          if (!listingId) return;
+
+          const titleEl = cardSection.querySelector('[data-testid="listing-title"]');
+          const priceEl = cardSection.querySelector('[data-testid="listing-price"]');
+          const linkEl = cardSection.querySelector('[data-testid="listing-link"]');
+          const imgEl = cardSection.querySelector('[data-testid="listing-card-image"]');
+          const locationEl = cardSection.querySelector('[data-testid="listing-location"]');
+          const dateEl = cardSection.querySelector('[data-testid="listing-date"]');
+          const descriptionEl = cardSection.querySelector('[data-testid="listing-description"]');
+
+          items.push({
+            id: listingId,
+            title: titleEl?.textContent?.trim() || '',
+            price: priceEl?.textContent?.trim() || '',
+            location: locationEl?.textContent?.trim() || '',
+            date: dateEl?.textContent?.trim() || '',
+            url: linkEl?.href || '',
+            image: imgEl?.src || '',
+            description: descriptionEl?.textContent?.trim() || '',
+            scrapedAt: new Date().toISOString(),
+            order: index + 1
+          });
+        } catch (e) { /* skip */ }
+      });
+
+      return { items, strategy: 1, diagnostics: `strategy-1 (li[data-testid] wrapper): ${listItems.length} li elements found` };
+    }
+
+    // --- Strategy 2: section[data-testid="listing-card"] anywhere (grid view / alternate layout) ---
+    const cardSections = document.querySelectorAll('section[data-testid="listing-card"]');
+
+    if (cardSections.length > 0) {
+      cardSections.forEach((cardSection, index) => {
+        try {
+          const listingId = cardSection.getAttribute('data-listingid');
+          if (!listingId) return;
+
+          const titleEl = cardSection.querySelector('[data-testid="listing-title"]');
+          const priceEl = cardSection.querySelector('[data-testid="listing-price"]');
+          const linkEl = cardSection.querySelector('[data-testid="listing-link"]');
+          const imgEl = cardSection.querySelector('[data-testid="listing-card-image"]');
+          const locationEl = cardSection.querySelector('[data-testid="listing-location"]');
+          const dateEl = cardSection.querySelector('[data-testid="listing-date"]');
+          const descriptionEl = cardSection.querySelector('[data-testid="listing-description"]');
+
+          items.push({
+            id: listingId,
+            title: titleEl?.textContent?.trim() || '',
+            price: priceEl?.textContent?.trim() || '',
+            location: locationEl?.textContent?.trim() || '',
+            date: dateEl?.textContent?.trim() || '',
+            url: linkEl?.href || '',
+            image: imgEl?.src || '',
+            description: descriptionEl?.textContent?.trim() || '',
+            scrapedAt: new Date().toISOString(),
+            order: index + 1
+          });
+        } catch (e) { /* skip */ }
+      });
+
+      return { items, strategy: 2, diagnostics: `strategy-2 (section[data-testid="listing-card"]): ${cardSections.length} sections found` };
+    }
+
+    // --- Strategy 3: article[data-listingid] (older Kijiji markup) ---
+    const articles = document.querySelectorAll('article[data-listingid]');
+
+    if (articles.length > 0) {
+      articles.forEach((article, index) => {
+        try {
+          const listingId = article.getAttribute('data-listingid');
+          if (!listingId) return;
+
+          const titleEl = article.querySelector('a.title, [class*="title"]');
+          const priceEl = article.querySelector('[class*="price"]');
+          const linkEl = article.querySelector('a[href*="/v-"]');
+          const imgEl = article.querySelector('img');
+          const locationEl = article.querySelector('[class*="location"]');
+          const dateEl = article.querySelector('[class*="date"]');
+
+          items.push({
+            id: listingId,
+            title: titleEl?.textContent?.trim() || '',
+            price: priceEl?.textContent?.trim() || '',
+            location: locationEl?.textContent?.trim() || '',
+            date: dateEl?.textContent?.trim() || '',
+            url: linkEl?.href || '',
+            image: imgEl?.src || '',
+            description: '',
+            scrapedAt: new Date().toISOString(),
+            order: index + 1
+          });
+        } catch (e) { /* skip */ }
+      });
+
+      return { items, strategy: 3, diagnostics: `strategy-3 (article[data-listingid]): ${articles.length} articles found` };
+    }
+
+    // --- Nothing matched: collect diagnostics to help debug ---
+    const bodySnippet = document.body?.innerHTML?.substring(0, 500) || '';
+    const allDataTestIds = [...document.querySelectorAll('[data-testid]')]
+      .map(el => el.getAttribute('data-testid'))
+      .slice(0, 20);
+
+    return {
+      items: [],
+      strategy: 0,
+      diagnostics: `strategy-0 (no selectors matched). data-testid values on page: [${allDataTestIds.join(', ')}]. Body snippet: ${bodySnippet}`
+    };
+  });
 }
 
 async function sendDiscordNotification(newListings, config) {
@@ -202,6 +370,7 @@ async function scrapeAllPages() {
     const config = loadConfig();
 
     console.log(`[${new Date().toISOString()}] 🔄 Starting multi-page scrape with config interval: ${config.interval}ms`);
+    console.log(`[${new Date().toISOString()}] 🌐 Scraping URL: ${config.url}`);
 
     // Log memory usage
     const memUsage = process.memoryUsage();
@@ -215,19 +384,22 @@ async function scrapeAllPages() {
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
 
+    // Stealth: suppress navigator.webdriver and mimic real browser
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      window.chrome = { runtime: {} };
+    });
+
     // Scrape first page to determine total pages
     let currentPage = 1;
     let totalPages = 1;
     let hasMorePages = true;
 
     while (hasMorePages && currentPage <= totalPages) {
-      // Build URL with page parameter
-      const baseUrl = config.url.includes('?') ? config.url : `${config.url}?view=list`;
-      const pageUrl = baseUrl.includes('page=')
-        ? baseUrl.replace(/page=\d+/, `page=${currentPage}`)
-        : `${baseUrl}&page=${currentPage}`;
+      const pageUrl = buildKijijiPageUrl(config.url, currentPage);
 
-      console.log(`[${new Date().toISOString()}] 📄 Scraping page ${currentPage}...`);
+      console.log(`[${new Date().toISOString()}] 📄 Scraping page ${currentPage}: ${pageUrl}`);
 
       const response = await page.goto(pageUrl, { waitUntil: 'networkidle2' });
 
@@ -236,65 +408,47 @@ async function scrapeAllPages() {
         throw new Error(`Page ${currentPage} returned status ${response.status()}`);
       }
 
-      // Wait for listings to be rendered
-      await page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 5000 }).catch(() => {
-        console.log(`[${new Date().toISOString()}] ⚠️  No listings found on page ${currentPage}, continuing...`);
+      // Wait for any listing card variant to appear; try all known selectors in order
+      await Promise.race([
+        page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 8000 }),
+        page.waitForSelector('section[data-testid="listing-card"]', { timeout: 8000 }),
+        page.waitForSelector('article[data-listingid]', { timeout: 8000 }),
+      ]).catch(() => {
+        console.log(`[${new Date().toISOString()}] ⚠️  No known listing selector appeared on page ${currentPage} within 8s, attempting extraction anyway...`);
       });
 
-      // Extract listings and pagination info
-      const pageData = await page.evaluate(() => {
-        const items = [];
-        const listItems = document.querySelectorAll('li[data-testid^="listing-card-list-item-"]');
+      // Extract listings using multi-strategy extractor
+      const extractResult = await extractListingsFromPage(page);
 
-        listItems.forEach((listItem, index) => {
-          try {
-            const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
-            if (!cardSection) return;
-
-            const listingId = cardSection.getAttribute('data-listingid');
-            if (!listingId) return;
-
-            const titleEl = cardSection.querySelector('[data-testid="listing-title"]');
-            const priceEl = cardSection.querySelector('[data-testid="listing-price"]');
-            const linkEl = cardSection.querySelector('[data-testid="listing-link"]');
-            const imgEl = cardSection.querySelector('[data-testid="listing-card-image"]');
-            const locationEl = cardSection.querySelector('[data-testid="listing-location"]');
-            const dateEl = cardSection.querySelector('[data-testid="listing-date"]');
-            const descriptionEl = cardSection.querySelector('[data-testid="listing-description"]');
-
-            items.push({
-              id: listingId,
-              title: titleEl?.textContent?.trim() || '',
-              price: priceEl?.textContent?.trim() || '',
-              location: locationEl?.textContent?.trim() || '',
-              date: dateEl?.textContent?.trim() || '',
-              url: linkEl?.href || '',
-              image: imgEl?.src || '',
-              description: descriptionEl?.textContent?.trim() || '',
-              scrapedAt: new Date().toISOString(),
-              order: index + 1
-            });
-          } catch (e) {
-            // Silently skip problematic elements
-          }
-        });
-
-        // Try to determine total pages from the results text
+      // Determine total pages from the page (only needed once, on page 1)
+      const paginationInfo = await page.evaluate(() => {
         const resultsText = document.querySelector('[data-testid="srp-results"]')?.textContent || '';
-        let totalPages = 1;
         const match = resultsText.match(/of\s+([\d,]+)/);
         if (match) {
           const totalResults = parseInt(match[1].replace(/,/g, ''));
-          totalPages = Math.ceil(totalResults / 40); // 40 items per page
+          return Math.ceil(totalResults / 40);
         }
-
-        return { items, totalPages };
+        // Fallback: check for a next-page link
+        const hasNext = !!document.querySelector('[data-testid="pagination-next-link"], a[title="Next"], a[aria-label="Next"]');
+        return hasNext ? 999 : 1; // 999 = sentinel meaning "keep going until no next link"
       });
 
-      allPageListings.push(...pageData.items);
-      totalPages = pageData.totalPages;
+      if (currentPage === 1) {
+        totalPages = paginationInfo;
+      }
 
-      console.log(`[${new Date().toISOString()}] ✅ Page ${currentPage} complete. Found ${pageData.items.length} listings. Total pages: ${totalPages}`);
+      // Assign correct order offset so order numbers are globally sequential
+      const offset = allPageListings.length;
+      const pageItems = extractResult.items.map((item, i) => ({ ...item, order: offset + i + 1 }));
+
+      allPageListings.push(...pageItems);
+
+      console.log(`[${new Date().toISOString()}] ✅ Page ${currentPage} complete. Selector: ${extractResult.diagnostics}. Found ${pageItems.length} listings. Total pages: ${totalPages}`);
+
+      if (pageItems.length === 0) {
+        console.log(`[${new Date().toISOString()}] ⚠️  0 listings extracted on page ${currentPage}. Stopping pagination.`);
+        hasMorePages = false;
+      }
 
       // Check if there are more pages
       if (currentPage >= totalPages) {
@@ -395,6 +549,7 @@ async function scrapeListings() {
     });
 
     console.log(`[${new Date().toISOString()}] 🔄 Starting scrape with config interval: ${config.interval}ms`);
+    console.log(`[${new Date().toISOString()}] 🌐 Scraping URL: ${config.url}`);
 
     // Log memory usage
     const memUsage = process.memoryUsage();
@@ -408,6 +563,13 @@ async function scrapeListings() {
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
 
+    // Stealth: suppress navigator.webdriver and mimic real browser
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      window.chrome = { runtime: {} };
+    });
+
     // Use URL from config
     const response = await page.goto(config.url, { waitUntil: 'networkidle2' });
 
@@ -416,47 +578,24 @@ async function scrapeListings() {
       throw new Error(`Page returned status ${response.status()}`);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Extract listings using page.evaluate
-    const listings = await page.evaluate(() => {
-      const items = [];
-      const listItems = document.querySelectorAll('li[data-testid^="listing-card-list-item-"]');
-
-      listItems.forEach((listItem) => {
-        try {
-          const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
-          if (!cardSection) return;
-
-          const listingId = cardSection.getAttribute('data-listingid');
-          if (!listingId) return;
-
-          const titleEl = cardSection.querySelector('[data-testid="listing-title"]');
-          const priceEl = cardSection.querySelector('[data-testid="listing-price"]');
-          const linkEl = cardSection.querySelector('[data-testid="listing-link"]');
-          const imgEl = cardSection.querySelector('[data-testid="listing-card-image"]');
-          const locationEl = cardSection.querySelector('[data-testid="listing-location"]');
-          const dateEl = cardSection.querySelector('[data-testid="listing-date"]');
-          const descriptionEl = cardSection.querySelector('[data-testid="listing-description"]');
-
-          items.push({
-            id: listingId,
-            title: titleEl?.textContent?.trim() || '',
-            price: priceEl?.textContent?.trim() || '',
-            location: locationEl?.textContent?.trim() || '',
-            date: dateEl?.textContent?.trim() || '',
-            url: linkEl?.href || '',
-            image: imgEl?.src || '',
-            description: descriptionEl?.textContent?.trim() || '',
-            scrapedAt: new Date().toISOString()
-          });
-        } catch (e) {
-          // Silently skip problematic elements
-        }
-      });
-
-      return items;
+    // Wait for any listing card variant to appear; try all known selectors in order
+    await Promise.race([
+      page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 8000 }),
+      page.waitForSelector('section[data-testid="listing-card"]', { timeout: 8000 }),
+      page.waitForSelector('article[data-listingid]', { timeout: 8000 }),
+    ]).catch(() => {
+      console.log(`[${new Date().toISOString()}] ⚠️  No known listing selector appeared within 8s, attempting extraction anyway...`);
     });
+
+    // Extract listings using multi-strategy extractor
+    const extractResult = await extractListingsFromPage(page);
+    const listings = extractResult.items;
+
+    console.log(`[${new Date().toISOString()}] Selector used: ${extractResult.diagnostics}`);
+
+    if (listings.length === 0) {
+      console.log(`[${new Date().toISOString()}] ⚠️  0 listings extracted. Check selector diagnostics above. The page structure may have changed or bot detection may have blocked the request.`);
+    }
 
     // Load existing data
     let allListings = [];

@@ -22,6 +22,7 @@ class KijijiWorker {
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--disable-blink-features=AutomationControlled',
           '--single-process=false'
         ]
       });
@@ -119,6 +120,13 @@ class KijijiWorker {
       page.setDefaultTimeout(30000);
       page.setDefaultNavigationTimeout(30000);
 
+      // Stealth: suppress navigator.webdriver and mimic real browser
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        window.chrome = { runtime: {} };
+      });
+
       const response = await page.goto(this.url, { waitUntil: 'networkidle2' });
       this.log(`HTTP Status: ${response.status()}`);
 
@@ -126,56 +134,112 @@ class KijijiWorker {
         this.log(`⚠️  Page returned status ${response.status()}`);
       }
 
-      // Wait for listings to be rendered
-      await page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 5000 }).catch(() => {
-        this.log(`⚠️  No listings found, continuing...`);
+      // Wait for any known listing card variant; all three selectors race simultaneously
+      await Promise.race([
+        page.waitForSelector('li[data-testid^="listing-card-list-item-"]', { timeout: 8000 }),
+        page.waitForSelector('section[data-testid="listing-card"]', { timeout: 8000 }),
+        page.waitForSelector('article[data-listingid]', { timeout: 8000 }),
+      ]).catch(() => {
+        this.log(`⚠️  No known listing selector appeared within 8s, attempting extraction anyway...`);
       });
+
       this.log(`Page loaded. Searching for listings...`);
 
-      const listings = await page.evaluate(() => {
+      // Multi-strategy extraction with fallback selectors and diagnostics
+      const extractResult = await page.evaluate(() => {
         const items = [];
+
+        // Strategy 1: standard list-view li wrapper
         const listItems = document.querySelectorAll('li[data-testid^="listing-card-list-item-"]');
+        if (listItems.length > 0) {
+          listItems.forEach((listItem, index) => {
+            try {
+              const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
+              if (!cardSection) return;
+              const listingId = cardSection.getAttribute('data-listingid');
+              if (!listingId) return;
+              items.push({
+                id: listingId,
+                title: cardSection.querySelector('[data-testid="listing-title"]')?.textContent?.trim() || '',
+                price: cardSection.querySelector('[data-testid="listing-price"]')?.textContent?.trim() || '',
+                location: cardSection.querySelector('[data-testid="listing-location"]')?.textContent?.trim() || '',
+                date: cardSection.querySelector('[data-testid="listing-date"]')?.textContent?.trim() || '',
+                url: cardSection.querySelector('[data-testid="listing-link"]')?.href || '',
+                image: cardSection.querySelector('[data-testid="listing-card-image"]')?.src || '',
+                description: cardSection.querySelector('[data-testid="listing-description"]')?.textContent?.trim() || '',
+                scrapedAt: new Date().toISOString(),
+                order: index + 1
+              });
+            } catch (e) { /* skip */ }
+          });
+          return { items, strategy: 1, diagnostics: `strategy-1 (li wrapper): ${listItems.length} elements` };
+        }
 
-        listItems.forEach((listItem) => {
-          try {
-            const testId = listItem.getAttribute('data-testid');
-            const indexMatch = testId.match(/listing-card-list-item-(\d+)/);
-            const index = indexMatch ? indexMatch[1] : null;
+        // Strategy 2: section[data-testid="listing-card"] anywhere (grid / alternate layout)
+        const cardSections = document.querySelectorAll('section[data-testid="listing-card"]');
+        if (cardSections.length > 0) {
+          cardSections.forEach((cardSection, index) => {
+            try {
+              const listingId = cardSection.getAttribute('data-listingid');
+              if (!listingId) return;
+              items.push({
+                id: listingId,
+                title: cardSection.querySelector('[data-testid="listing-title"]')?.textContent?.trim() || '',
+                price: cardSection.querySelector('[data-testid="listing-price"]')?.textContent?.trim() || '',
+                location: cardSection.querySelector('[data-testid="listing-location"]')?.textContent?.trim() || '',
+                date: cardSection.querySelector('[data-testid="listing-date"]')?.textContent?.trim() || '',
+                url: cardSection.querySelector('[data-testid="listing-link"]')?.href || '',
+                image: cardSection.querySelector('[data-testid="listing-card-image"]')?.src || '',
+                description: cardSection.querySelector('[data-testid="listing-description"]')?.textContent?.trim() || '',
+                scrapedAt: new Date().toISOString(),
+                order: index + 1
+              });
+            } catch (e) { /* skip */ }
+          });
+          return { items, strategy: 2, diagnostics: `strategy-2 (section card): ${cardSections.length} elements` };
+        }
 
-            if (!index) return;
+        // Strategy 3: article[data-listingid] (older Kijiji markup)
+        const articles = document.querySelectorAll('article[data-listingid]');
+        if (articles.length > 0) {
+          articles.forEach((article, index) => {
+            try {
+              const listingId = article.getAttribute('data-listingid');
+              if (!listingId) return;
+              items.push({
+                id: listingId,
+                title: article.querySelector('a.title, [class*="title"]')?.textContent?.trim() || '',
+                price: article.querySelector('[class*="price"]')?.textContent?.trim() || '',
+                location: article.querySelector('[class*="location"]')?.textContent?.trim() || '',
+                date: article.querySelector('[class*="date"]')?.textContent?.trim() || '',
+                url: article.querySelector('a[href*="/v-"]')?.href || '',
+                image: article.querySelector('img')?.src || '',
+                description: '',
+                scrapedAt: new Date().toISOString(),
+                order: index + 1
+              });
+            } catch (e) { /* skip */ }
+          });
+          return { items, strategy: 3, diagnostics: `strategy-3 (article): ${articles.length} elements` };
+        }
 
-            const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
-            if (!cardSection) return;
-
-            const listingId = cardSection.getAttribute('data-listingid');
-            if (!listingId) return;
-
-            const titleEl = cardSection.querySelector('[data-testid="listing-title"]');
-            const priceEl = cardSection.querySelector('[data-testid="listing-price"]');
-            const linkEl = cardSection.querySelector('[data-testid="listing-link"]');
-            const imgEl = cardSection.querySelector('[data-testid="listing-card-image"]');
-            const locationEl = cardSection.querySelector('[data-testid="listing-location"]');
-            const dateEl = cardSection.querySelector('[data-testid="listing-date"]');
-            const descriptionEl = cardSection.querySelector('[data-testid="listing-description"]');
-
-            items.push({
-              id: listingId,
-              title: titleEl?.textContent?.trim() || '',
-              price: priceEl?.textContent?.trim() || '',
-              location: locationEl?.textContent?.trim() || '',
-              date: dateEl?.textContent?.trim() || '',
-              url: linkEl?.href || '',
-              image: imgEl?.src || '',
-              description: descriptionEl?.textContent?.trim() || '',
-              scrapedAt: new Date().toISOString()
-            });
-          } catch (e) {
-            // Silently skip problematic elements
-          }
-        });
-
-        return items;
+        // Nothing matched — collect diagnostics
+        const allDataTestIds = [...document.querySelectorAll('[data-testid]')]
+          .map(el => el.getAttribute('data-testid'))
+          .slice(0, 20);
+        return {
+          items: [],
+          strategy: 0,
+          diagnostics: `strategy-0 (no match). data-testid values: [${allDataTestIds.join(', ')}]`
+        };
       });
+
+      this.log(`Selector: ${extractResult.diagnostics}`);
+      const listings = extractResult.items;
+
+      if (listings.length === 0) {
+        this.log(`⚠️  0 listings extracted. Check selector diagnostics above.`);
+      }
 
       // Load existing data
       let allListings = [];
