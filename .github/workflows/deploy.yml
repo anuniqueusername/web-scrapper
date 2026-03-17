@@ -1,0 +1,232 @@
+name: Deploy to Production
+
+# ---------------------------------------------------------------------------
+# Triggers
+# ---------------------------------------------------------------------------
+on:
+  push:
+    branches:
+      - main          # Auto-deploy every push to main
+  workflow_dispatch:  # Manual deploy button in GitHub UI
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+      skip_build:
+        description: 'Skip npm build (config-only deploy)'
+        type: boolean
+        required: false
+        default: false
+
+# Prevent concurrent deployments — queue them instead
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+# ---------------------------------------------------------------------------
+# Required GitHub Secrets (Settings -> Secrets -> Actions):
+#
+#   DROPLET_HOST           — IP address or hostname of your Digital Ocean droplet
+#   DROPLET_SSH_KEY        — Private SSH key (the full contents of ~/.ssh/id_rsa)
+#   DROPLET_USER           — SSH username (default: scraper)
+#   DISCORD_DEPLOY_WEBHOOK — (Optional) Discord webhook URL for deploy notifications
+# ---------------------------------------------------------------------------
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: Build validation
+  # Runs on GitHub's runners to catch build errors BEFORE touching production.
+  # -------------------------------------------------------------------------
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Build Next.js app
+        run: npm run build
+        env:
+          NODE_ENV: production
+          # Stub env vars so the build doesn't fail on missing values
+          NEXT_PUBLIC_BASE_URL: https://example.com
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+
+      - name: Upload build artifact (optional — for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build-${{ github.sha }}
+          path: .next/
+          retention-days: 3
+
+  # -------------------------------------------------------------------------
+  # Job 2: Deploy to droplet
+  # Only runs after build-check passes.
+  # -------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Droplet
+    runs-on: ubuntu-latest
+    needs: build-check
+    timeout-minutes: 15
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DROPLET_SSH_KEY }}
+
+      - name: Add droplet to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Notify Discord — deploy starting
+        if: ${{ vars.DISCORD_DEPLOY_WEBHOOK != '' || secrets.DISCORD_DEPLOY_WEBHOOK != '' }}
+        run: |
+          curl -s -X POST "${{ secrets.DISCORD_DEPLOY_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"Deploying Kijiji Scraper\",
+                \"description\": \"Branch: \`${{ github.ref_name }}\` | Commit: \`${{ github.sha }}\`\",
+                \"color\": 16776960,
+                \"footer\": {\"text\": \"Started by ${{ github.actor }}\"}
+              }]
+            }" || true
+
+      - name: Deploy via SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DROPLET_HOST }}
+          DEPLOY_USER: ${{ secrets.DROPLET_USER }}
+          BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+          SKIP_BUILD: ${{ github.event.inputs.skip_build || 'false' }}
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+              "${{ secrets.DROPLET_USER || 'scraper' }}@${{ secrets.DROPLET_HOST }}" \
+              bash << 'REMOTE'
+            set -euo pipefail
+
+            APP_DIR="/var/www/web-scraper"
+            BRANCH="${BRANCH:-main}"
+            RELEASE_ID="$(date +%Y%m%d_%H%M%S)_gha"
+            RELEASE_DIR="$APP_DIR/releases/$RELEASE_ID"
+
+            echo "[INFO] Starting GHA-triggered deployment (release: $RELEASE_ID)"
+
+            # Ensure layout
+            mkdir -p "$APP_DIR/releases" "$APP_DIR/shared/data" "$APP_DIR/shared/logs"
+
+            # Pull latest
+            cd "$APP_DIR/repo"
+            git fetch --all --prune
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            # Create release snapshot
+            rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' \
+              "$APP_DIR/repo/" "$RELEASE_DIR/"
+
+            # Link shared persistent files
+            ln -sfn "$APP_DIR/shared/data"                        "$RELEASE_DIR/data"
+            ln -sfn "$APP_DIR/shared/.env.production"             "$RELEASE_DIR/.env.production"        2>/dev/null || true
+            ln -sfn "$APP_DIR/shared/scraper-config.json"         "$RELEASE_DIR/scraper-config.json"    2>/dev/null || true
+            ln -sfn "$APP_DIR/shared/scraper-status.json"         "$RELEASE_DIR/scraper-status.json"    2>/dev/null || true
+            ln -sfn "$APP_DIR/shared/facebook-scraper-status.json" "$RELEASE_DIR/facebook-scraper-status.json" 2>/dev/null || true
+
+            if [[ -f "$APP_DIR/shared/ecosystem.config.js" ]]; then
+              cp "$APP_DIR/shared/ecosystem.config.js" "$RELEASE_DIR/ecosystem.config.js"
+            fi
+
+            # Install deps
+            cd "$RELEASE_DIR"
+            export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+            export PUPPETEER_EXECUTABLE_PATH="$(command -v chromium-browser 2>/dev/null || command -v chromium || echo /usr/bin/chromium)"
+            npm ci --prefer-offline --no-audit --no-fund
+
+            # Build
+            if [[ "${SKIP_BUILD:-false}" != "true" ]]; then
+              if [[ -f "$APP_DIR/shared/.env.production" ]]; then
+                set -a; source "$APP_DIR/shared/.env.production"; set +a
+              fi
+              npm run build
+            fi
+
+            # Atomic symlink swap
+            ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
+
+            # Zero-downtime reload
+            cd "$APP_DIR/current"
+            if pm2 list | grep -qE "next-app|scraper-worker"; then
+              pm2 reload ecosystem.config.js --update-env
+            else
+              pm2 start ecosystem.config.js --env production
+            fi
+            pm2 save
+
+            # Health check
+            for i in $(seq 1 15); do
+              if curl -sf "http://localhost:3000" >/dev/null 2>&1; then
+                echo "[OK] Health check passed."
+                break
+              fi
+              echo "[INFO] Waiting for app... ($i/15)"
+              sleep 2
+            done
+
+            # Prune old releases
+            ls -1t "$APP_DIR/releases" | tail -n +6 | while read -r old; do
+              rm -rf "$APP_DIR/releases/$old"
+            done
+
+            echo "[OK] Deployment $RELEASE_ID complete."
+          REMOTE
+
+      - name: Notify Discord — deploy succeeded
+        if: success()
+        run: |
+          DURATION=${{ github.run_number }}
+          curl -s -X POST "${{ secrets.DISCORD_DEPLOY_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"Deployment Succeeded\",
+                \"description\": \"Branch: \`${{ github.ref_name }}\` | [View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                \"color\": 3066993,
+                \"footer\": {\"text\": \"${{ github.actor }} | ${{ github.sha }}\"}
+              }]
+            }" || true
+
+      - name: Notify Discord — deploy failed
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.DISCORD_DEPLOY_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"Deployment FAILED\",
+                \"description\": \"Branch: \`${{ github.ref_name }}\` | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                \"color\": 15158332,
+                \"footer\": {\"text\": \"${{ github.actor }} | ${{ github.sha }}\"}
+              }]
+            }" || true

@@ -20,6 +20,7 @@ scraper-status.json
 .env
 .env.local
 .env.*.local
+.env.production          # Real secrets — use .env.production.example as template
 
 # IDE
 .vscode/

@@ -1,5 +1,5 @@
 {
-  "name": "kijiji-scraper",
+  "name": "web-scraper",
   "version": "1.0.0",
   "description": "Kijiji vending machine listings scraper",
   "main": "scraper.js",
