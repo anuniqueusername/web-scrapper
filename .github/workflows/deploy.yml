@@ -194,6 +194,7 @@ jobs:
           path: .next
           if-no-files-found: error
           retention-days: 1
+          include-hidden-files: true
 
   # ---------------------------------------------------------------------------
   # Job 2: Deploy to Digital Ocean droplet
@@ -219,7 +220,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
-          path: .next/
 
       # Write the SSH private key to a locked-down temp file.
       # ssh-agent is intentionally NOT used here — a file is simpler and
