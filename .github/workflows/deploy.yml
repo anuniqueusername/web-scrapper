@@ -84,7 +84,6 @@ jobs:
     name: Build Check
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -179,9 +178,10 @@ jobs:
         if: ${{ github.event.inputs.skip_build != 'true' }}
         run: |
           echo "--- Checking .next/ one more time ---"
-          pwd
-          ls -la .next | head -20 || echo "❌ .next not found!"
-          test -d .next && echo "✓ .next directory confirmed" || exit 1
+          echo "PWD: $(pwd)"
+          echo "GITHUB_WORKSPACE: ${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/.next" 2>/dev/null | head -20 || echo "❌ .next not found!"
+          test -d "${{ github.workspace }}/.next" && echo "✓ .next directory confirmed" || exit 1
 
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
@@ -190,7 +190,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
-          path: .next/
+          path: ${{ github.workspace }}/.next
           if-no-files-found: error
           retention-days: 1
 
