@@ -175,6 +175,15 @@ jobs:
 
           echo "--- Build output verified successfully ---"
 
+      # Double-check .next/ exists right before upload
+      - name: Check .next before upload
+        if: ${{ github.event.inputs.skip_build != 'true' }}
+        run: |
+          echo "--- Checking .next/ one more time ---"
+          pwd
+          ls -la .next | head -20 || echo "❌ .next not found!"
+          test -d .next && echo "✓ .next directory confirmed" || exit 1
+
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
       - name: Upload .next artifact
