@@ -167,16 +167,14 @@ jobs:
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
       # Exclude .next/cache — it can be hundreds of MB and is not needed.
-      # The negation pattern `!.next/cache/` is valid upload-artifact@v4 glob
-      # syntax (uses @actions/glob under the hood, which supports ! exclusions).
       - name: Upload .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
-          path: |
-            .next/
-            !.next/cache/
+          path: .next/
+          exclude-patterns: |
+            .next/cache/**
           # Fail the job explicitly if .next/ is somehow still missing
           if-no-files-found: error
           # Short retention — only needed for the deploy job that follows
