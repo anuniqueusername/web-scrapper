@@ -95,7 +95,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Cache the npm store between runs to speed up npm ci
           cache: 'npm'
 
       # npm ci: honours package-lock.json exactly, fails if lock is out of sync.
@@ -188,10 +187,10 @@ jobs:
       # the server instead of rebuilding there (faster + identical binary).
       - name: Upload .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.8.0
         with:
           name: nextjs-build-${{ github.sha }}
-          path: .next
+          path: .next/
           if-no-files-found: error
           retention-days: 1
 
@@ -216,7 +215,7 @@ jobs:
       # Download the .next/ artefact built in job 1 so we can rsync it
       - name: Download .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.8
         with:
           name: nextjs-build-${{ github.sha }}
           path: .next/
