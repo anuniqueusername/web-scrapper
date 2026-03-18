@@ -108,17 +108,48 @@ jobs:
 
       # Provide the minimum env vars Next.js needs at build time so that
       # NEXT_PUBLIC_* references don't cause build errors.
+      # Uses `next build --webpack` (not Turbopack) — see next.config.js for why.
+      # `set -euo pipefail` is implicit in GitHub Actions run steps; any non-zero
+      # exit from next build will fail this step loudly before the upload runs.
       - name: Build Next.js
         if: ${{ github.event.inputs.skip_build != 'true' }}
         env:
           NODE_ENV: production
           NEXT_PUBLIC_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://example.com' }}
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
-        run: npm run build
+        run: |
+          echo "--- Node/npm versions ---"
+          node --version
+          npm --version
+          echo "--- Starting next build --webpack ---"
+          npm run build
+          echo "--- Build completed ---"
+
+      # Verify .next/ was actually produced before attempting to upload.
+      # next build --webpack writes .next/BUILD_ID on success; if it is absent
+      # the build silently failed and we must abort here with a clear message
+      # rather than letting the upload step emit the cryptic "No files found" error.
+      - name: Verify build output
+        if: ${{ github.event.inputs.skip_build != 'true' }}
+        run: |
+          echo "--- .next/ directory contents ---"
+          ls -la .next/ || { echo "ERROR: .next/ directory does not exist — build failed"; exit 1; }
+          if [ ! -f .next/BUILD_ID ]; then
+            echo "ERROR: .next/BUILD_ID not found — Next.js build did not complete successfully"
+            echo "--- Full .next/ tree (for debugging) ---"
+            find .next -maxdepth 3 | sort || true
+            exit 1
+          fi
+          echo "BUILD_ID: $(cat .next/BUILD_ID)"
+          echo "--- Top-level .next/ entries ---"
+          find .next -maxdepth 1 | sort
+          echo "--- Build output verified ---"
 
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
       # Exclude .next/cache — it can be hundreds of MB and is not needed.
+      # The negation pattern `!.next/cache/` is valid upload-artifact@v4 glob
+      # syntax (uses @actions/glob under the hood, which supports ! exclusions).
       - name: Upload .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
         uses: actions/upload-artifact@v4
@@ -127,6 +158,8 @@ jobs:
           path: |
             .next/
             !.next/cache/
+          # Fail the job explicitly if .next/ is somehow still missing
+          if-no-files-found: error
           # Short retention — only needed for the deploy job that follows
           retention-days: 1
 
