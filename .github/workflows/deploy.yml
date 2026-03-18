@@ -149,7 +149,7 @@ jobs:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
       # Download the .next/ artefact built in job 1 so we can rsync it
-      - name: Download .next artefact
+      - name: Download .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
         uses: actions/download-artifact@v4
         with:
