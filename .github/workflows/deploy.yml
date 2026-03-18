@@ -291,11 +291,19 @@ jobs:
 
       # Copy the tarball and the remote deploy script to the server in parallel
       - name: Upload release tarball and deploy script
+        env:
+          SSH_PORT: ${{ secrets.DROPLET_SSH_PORT || '22' }}
         run: |
-          SSH_OPTS="-i ~/.ssh/deploy_key -p ${{ secrets.DROPLET_SSH_PORT || '22' }} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
-          SCP_OPTS="-i ~/.ssh/deploy_key -P ${{ secrets.DROPLET_SSH_PORT || '22' }} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
-          DEST="${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}"
+          DROPLET_USER="${{ secrets.DROPLET_USER }}"
+          DROPLET_HOST="${{ secrets.DROPLET_HOST }}"
+          # Strip whitespace/newlines from secrets
+          DROPLET_USER=$(echo -n "${DROPLET_USER}" | tr -d '\n' | xargs)
+          DROPLET_HOST=$(echo -n "${DROPLET_HOST}" | tr -d '\n' | xargs)
+          DEST="${DROPLET_USER}@${DROPLET_HOST}"
 
+          SCP_OPTS="-i ~/.ssh/deploy_key -P ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
+
+          echo "Uploading to: ${DEST}"
           scp $SCP_OPTS /tmp/release.tar.gz "${DEST}:/tmp/release-${{ github.sha }}.tar.gz"
           scp $SCP_OPTS deploy-scripts/08-remote-deploy.sh "${DEST}:/tmp/08-remote-deploy.sh"
           echo "Upload complete."
