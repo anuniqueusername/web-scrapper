@@ -178,10 +178,11 @@ jobs:
         if: ${{ github.event.inputs.skip_build != 'true' }}
         run: |
           echo "--- Checking .next/ one more time ---"
-          echo "PWD: $(pwd)"
-          echo "GITHUB_WORKSPACE: ${{ github.workspace }}"
-          ls -la "${{ github.workspace }}/.next" 2>/dev/null | head -20 || echo "❌ .next not found!"
-          test -d "${{ github.workspace }}/.next" && echo "✓ .next directory confirmed" || exit 1
+          pwd
+          ls -la .next 2>/dev/null | head -5 || echo "❌ .next not found in pwd!"
+          test -d .next && echo "✓ .next directory exists" || echo "❌ .next directory missing"
+          echo "--- Full root directory ---"
+          ls -la | grep -E '^\.' | head -20
 
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
@@ -190,7 +191,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
-          path: ${{ github.workspace }}/.next
+          path: .next
           if-no-files-found: error
           retention-days: 1
 
