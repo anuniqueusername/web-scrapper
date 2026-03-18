@@ -121,15 +121,26 @@ jobs:
           echo "--- Node/npm versions ---"
           node --version
           npm --version
-          echo "--- Current directory ---"
-          pwd
-          echo "--- Files in root ---"
-          ls -la | head -20
           echo "--- Starting next build --webpack ---"
-          npm run build || { echo "BUILD FAILED"; cat .next/BUILD_ID 2>/dev/null || echo "No BUILD_ID found"; exit 1; }
-          echo "--- Build completed successfully ---"
-          echo "--- Checking .next/ exists ---"
-          test -d .next && echo ".next/ directory exists" || echo "ERROR: .next/ directory missing"
+          npm run build
+          BUILD_STATUS=$?
+          echo "--- Build exit code: $BUILD_STATUS ---"
+
+          if [ $BUILD_STATUS -ne 0 ]; then
+            echo "❌ Build failed with exit code $BUILD_STATUS"
+            exit 1
+          fi
+
+          echo "--- Checking .next/ ---"
+          if [ -d .next ]; then
+            echo "✓ .next/ exists"
+            ls -la .next | head -20
+          else
+            echo "❌ .next/ DOES NOT EXIST"
+            echo "--- Files in root directory ---"
+            ls -la
+            exit 1
+          fi
 
       # Verify .next/ was actually produced before attempting to upload.
       # next build --webpack writes .next/BUILD_ID on success; if it is absent
@@ -166,18 +177,13 @@ jobs:
 
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
-      # Exclude .next/cache — it can be hundreds of MB and is not needed.
       - name: Upload .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
-          path: .next/
-          exclude-patterns: |
-            .next/cache/**
-          # Fail the job explicitly if .next/ is somehow still missing
+          path: .next
           if-no-files-found: error
-          # Short retention — only needed for the deploy job that follows
           retention-days: 1
 
   # ---------------------------------------------------------------------------
