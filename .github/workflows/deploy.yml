@@ -303,7 +303,18 @@ jobs:
 
           SCP_OPTS="-i ~/.ssh/deploy_key -P ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
 
-          echo "Uploading to: ${DEST}"
+          echo "--- SSH Debug Info ---"
+          echo "Destination: ${DEST}"
+          echo "SSH Port: ${SSH_PORT}"
+          echo "Key file: ~/.ssh/deploy_key"
+          ls -la ~/.ssh/deploy_key
+          echo "Key fingerprint:"
+          ssh-keygen -lf ~/.ssh/deploy_key || true
+          echo ""
+          echo "--- Testing SSH connection ---"
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o ConnectTimeout=10 "${DEST}" "echo 'SSH connection successful'" || echo "SSH connection failed"
+          echo ""
+          echo "--- Uploading files ---"
           scp $SCP_OPTS /tmp/release.tar.gz "${DEST}:/tmp/release-${{ github.sha }}.tar.gz"
           scp $SCP_OPTS deploy-scripts/08-remote-deploy.sh "${DEST}:/tmp/08-remote-deploy.sh"
           echo "Upload complete."
