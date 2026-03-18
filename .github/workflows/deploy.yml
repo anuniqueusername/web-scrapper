@@ -204,9 +204,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-check
     timeout-minutes: 20
-    # Links this job to a GitHub Environment named "production".
-    # Add required reviewers in Settings -> Environments for manual approval.
-    environment: production
+    # Links this job to the PROD GitHub Environment
+    environment: PROD
 
     steps:
       - name: Checkout
