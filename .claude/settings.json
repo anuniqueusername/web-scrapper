@@ -12,7 +12,11 @@
       "Bash(npm install)",
       "Bash(npm start)",
       "Bash(npm list)",
-      "Bash(npm install better-sqlite3)"
+      "Bash(npm install better-sqlite3)",
+      "Bash(cat \"d:/Projects/Competitor Scraper/deploy-scripts/workflows/\"*)"
+    ],
+    "additionalDirectories": [
+      "d:\\Projects\\Competitor Scraper\\.github\\workflows"
     ]
   }
 }

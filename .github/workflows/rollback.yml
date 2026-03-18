@@ -1,0 +1,158 @@
+# =============================================================================
+# GitHub Actions — Rollback to previous release
+# Project: Kijiji Competitor Scraper
+#
+# Trigger: MANUAL ONLY (workflow_dispatch)
+#
+# Use this when a deployment caused a regression and you need to quickly
+# restore the previous working state without pushing a revert commit.
+#
+# What it does:
+#   1. Lists the last 5 releases on the server (newest first)
+#   2. Points the current symlink to the release you specify (or auto-picks
+#      the second-most-recent if you leave the input blank)
+#   3. Runs pm2 reload + pm2 restart against the rolled-back ecosystem.config.js
+#   4. Verifies localhost:3000 health check passes
+#   5. Sends Discord notification
+#
+# IMPORTANT: Rollback does NOT revert .env.production or the shared data/
+# directory. Those are intentionally persistent and version-independent.
+# =============================================================================
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: 'Release ID to roll back to (leave blank to use second-most-recent)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Rollback to previous release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Checkout (for Discord notification context)
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            "${{ secrets.DROPLET_HOST }}" \
+            >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Execute rollback
+        id: rollback
+        run: |
+          TARGET_RELEASE="${{ github.event.inputs.release_id }}"
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "$(cat <<REMOTE
+              set -euo pipefail
+              APP_ROOT='/var/www/web-scraper'
+              RELEASES_DIR="\${APP_ROOT}/releases"
+              CURRENT_LINK="\${APP_ROOT}/current"
+
+              echo '--- Available releases (newest first) ---'
+              ls -1t "\${RELEASES_DIR}"
+              echo '-----------------------------------------'
+
+              # If no release ID provided, pick the second-most-recent
+              TARGET='${TARGET_RELEASE}'
+              if [[ -z "\$TARGET" ]]; then
+                TARGET=\$(ls -1t "\${RELEASES_DIR}" | sed -n '2p')
+                if [[ -z "\$TARGET" ]]; then
+                  echo 'ERROR: No previous release found to roll back to.'
+                  exit 1
+                fi
+                echo "Auto-selected previous release: \$TARGET"
+              fi
+
+              TARGET_DIR="\${RELEASES_DIR}/\${TARGET}"
+              if [[ ! -d "\$TARGET_DIR" ]]; then
+                echo "ERROR: Release directory not found: \${TARGET_DIR}"
+                exit 1
+              fi
+
+              # Current before rollback (for logging)
+              CURRENT_BEFORE=\$(readlink "\${CURRENT_LINK}" | xargs basename)
+              echo "Rolling back from \${CURRENT_BEFORE} to \${TARGET}"
+
+              # Atomic symlink swap
+              ln -sfn "\${TARGET_DIR}" "\${CURRENT_LINK}"
+              echo "Symlink updated: current -> \${TARGET}"
+
+              # Reload PM2 against the rolled-back release
+              ECOSYSTEM="\${CURRENT_LINK}/ecosystem.config.js"
+              if [[ ! -f "\$ECOSYSTEM" ]]; then
+                echo 'WARNING: ecosystem.config.js not found — trying shared/'
+                ECOSYSTEM="\${APP_ROOT}/shared/ecosystem.config.js"
+              fi
+
+              pm2 reload "\$ECOSYSTEM" --only next-app --update-env || true
+              pm2 restart "\$ECOSYSTEM" --only scraper-worker --update-env || true
+              pm2 save --force >/dev/null
+
+              echo 'PM2 reloaded against rolled-back release.'
+
+              # Health check
+              echo 'Waiting for Next.js...'
+              for i in \$(seq 1 12); do
+                CODE=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:3000 2>/dev/null || echo 000)
+                if echo "\$CODE" | grep -qE '^(200|301|302|304)\$'; then
+                  echo "Health check passed (HTTP \$CODE) on attempt \$i."
+                  break
+                fi
+                echo "Attempt \$i/12: HTTP \$CODE — waiting 5s..."
+                sleep 5
+              done
+
+              echo "Rollback to \${TARGET} complete."
+            REMOTE
+            )"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Discord notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          STATUS: ${{ job.status }}
+        run: |
+          [ -z "$DISCORD_WEBHOOK" ] && exit 0
+          COLOR=16776960
+          TITLE="Rollback Executed"
+          [ "$STATUS" != "success" ] && COLOR=15158332 && TITLE="Rollback FAILED"
+          TARGET="${{ github.event.inputs.release_id || '(auto: previous)' }}"
+          curl -s -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"${TITLE}\",
+                \"color\": ${COLOR},
+                \"fields\": [
+                  {\"name\": \"Target release\", \"value\": \"${TARGET}\", \"inline\": true},
+                  {\"name\": \"Triggered by\", \"value\": \"${{ github.actor }}\", \"inline\": true},
+                  {\"name\": \"Run\", \"value\": \"[#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"inline\": true}
+                ]
+              }]
+            }" || true

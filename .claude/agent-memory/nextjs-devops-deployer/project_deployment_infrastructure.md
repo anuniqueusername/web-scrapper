@@ -89,11 +89,37 @@ User: `deploy`, App dir: `/home/deploy/app`
 
 The `npm run start` script currently runs `next dev` (not `next start`). The correct production command is `npm run production` which runs `next start`. PM2 ecosystem.config.js invokes `node_modules/.bin/next start` directly to avoid this ambiguity.
 
+## GitHub Actions Workflows (three files)
+
+| File                                        | Trigger          | Purpose                                              |
+|---------------------------------------------|------------------|------------------------------------------------------|
+| `.github/workflows/deploy.yml`              | push to main     | Full deploy: build check + SSH deploy + health check |
+| `.github/workflows/update-env.yml`          | manual only      | Push updated .env.production without full redeploy   |
+| `.github/workflows/rollback.yml`            | manual only      | Repoint current symlink to a previous release        |
+
+### Remote deploy script
+- `deploy-scripts/08-remote-deploy.sh` — executed over SSH by deploy.yml
+  - Unpacks tarball, links shared files, runs npm ci, swaps symlink, reloads PM2
+
+### Key design decisions
+- .next/ is built on GitHub runner, included in tarball — server never rebuilds
+- SKIP_BUILD=true path: trusts the tarball's .next/ directory as-is
+- ENV_B64: .env.production passed as base64 over SSH to avoid shell escaping issues
+- pm2 reload (next-app) vs pm2 restart (scraper-worker): cluster reload is zero-downtime; scraper cannot safely hot-reload because Puppeteer holds a browser process
+
 ## GitHub Secrets Required
 
-| Secret                  | Value                                      |
-|-------------------------|--------------------------------------------|
-| DROPLET_HOST            | IP address of the Digital Ocean droplet    |
-| DROPLET_SSH_KEY         | Full contents of the SSH private key       |
-| DROPLET_USER            | scraper (or whatever user was created)     |
-| DISCORD_DEPLOY_WEBHOOK  | Discord webhook URL for deploy alerts      |
+| Secret                      | Value                                                     |
+|-----------------------------|-----------------------------------------------------------|
+| DROPLET_HOST                | IP address of the Digital Ocean droplet                   |
+| DROPLET_SSH_KEY             | Full PEM private key contents (-----BEGIN ... -----)      |
+| DROPLET_USER                | SSH username on the droplet (e.g. deploy)                 |
+| DROPLET_SSH_PORT            | SSH port (omit to default to 22)                          |
+| DISCORD_DEPLOY_WEBHOOK      | Discord webhook URL for deploy notifications              |
+| APP_BASE_URL                | https://yourdomain.com                                    |
+| APP_PORT                    | 3000 (omit to default)                                    |
+| APP_DISCORD_WEBHOOK_URL     | Scraper listing-alert Discord webhook                     |
+| APP_SLACK_WEBHOOK_URL       | Scraper listing-alert Slack webhook                       |
+| APP_SESSION_SECRET          | 64-char random hex string                                 |
+| APP_SCRAPER_DEFAULT_URL     | Default Kijiji search URL                                 |
+| APP_PUPPETEER_PATH          | /usr/bin/chromium-browser (omit to default)               |

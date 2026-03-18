@@ -1,232 +1,348 @@
-name: Deploy to Production
+# =============================================================================
+# GitHub Actions — Production Deployment
+# Project: Kijiji Competitor Scraper (Next.js dashboard + Node.js Puppeteer scraper)
+#
+# Trigger: push to main branch (or manual via workflow_dispatch)
+#
+# Pipeline overview:
+#   Job 1 — build-check   : Install deps + npm run build on GitHub runner
+#                           Catches broken builds BEFORE touching production.
+#                           Uploads .next/ artefact for the deploy job to reuse.
+#
+#   Job 2 — deploy        : Needs job 1 to pass.
+#                           Writes .env.production on the server from GitHub Secrets.
+#                           Runs deploy-scripts/08-remote-deploy.sh over SSH:
+#                             - git pull latest code
+#                             - npm ci (clean, deterministic install)
+#                             - Reuses .next/ from job 1 (no rebuild on server)
+#                             - Symlinks shared/ data dir + config files
+#                             - pm2 reload next-app  (zero-downtime cluster reload)
+#                             - pm2 restart scraper-worker (graceful kill + restart)
+#                             - Prunes releases older than KEEP_RELEASES=5
+#                           Verifies localhost:3000 health check before finishing.
+#                           Sends Discord notification (pass or fail).
+#
+# -----------------------------------------------------------------------
+# GitHub Secrets required (Settings -> Secrets and variables -> Actions):
+# -----------------------------------------------------------------------
+#
+#   DROPLET_HOST               Public IP or hostname of the Digital Ocean droplet
+#   DROPLET_USER               SSH username on the droplet  (e.g. deploy)
+#   DROPLET_SSH_KEY            Full PEM private key contents (-----BEGIN ... -----)
+#   DROPLET_SSH_PORT           SSH port — omit to default to 22
+#
+# App runtime secrets (written to .env.production on the server):
+#   APP_BASE_URL               https://yourdomain.com  (no trailing slash)
+#   APP_PORT                   3000  (omit to default to 3000)
+#   APP_DISCORD_WEBHOOK_URL    Scraper listing-alert webhook
+#   APP_SLACK_WEBHOOK_URL      Scraper listing-alert webhook
+#   APP_SESSION_SECRET         64-char random hex string for future auth layer
+#   APP_SCRAPER_DEFAULT_URL    Default Kijiji search URL
+#   APP_PUPPETEER_PATH         Path to system Chromium (default: /usr/bin/chromium-browser)
+#
+# Notification:
+#   DISCORD_DEPLOY_WEBHOOK     Deployment status webhook (can be same as APP_DISCORD_WEBHOOK_URL)
+#
+# Estimated total run time: 4–8 minutes (Next.js build is the slow step)
+# =============================================================================
 
-# ---------------------------------------------------------------------------
-# Triggers
-# ---------------------------------------------------------------------------
+name: Deploy to Digital Ocean
+
 on:
   push:
     branches:
-      - main          # Auto-deploy every push to main
-  workflow_dispatch:  # Manual deploy button in GitHub UI
+      - main
+
+  # Manual trigger with optional overrides
+  workflow_dispatch:
     inputs:
       branch:
         description: 'Branch to deploy'
-        required: true
+        required: false
         default: 'main'
       skip_build:
-        description: 'Skip npm build (config-only deploy)'
+        description: 'Skip Next.js build (use if only scraper/config files changed)'
         type: boolean
         required: false
         default: false
 
-# Prevent concurrent deployments — queue them instead
+# Queue deployments for the same branch; never cancel an in-flight deploy
+# because a half-deployed state is worse than waiting.
 concurrency:
-  group: production-deploy
+  group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
-# ---------------------------------------------------------------------------
-# Required GitHub Secrets (Settings -> Secrets -> Actions):
-#
-#   DROPLET_HOST           — IP address or hostname of your Digital Ocean droplet
-#   DROPLET_SSH_KEY        — Private SSH key (the full contents of ~/.ssh/id_rsa)
-#   DROPLET_USER           — SSH username (default: scraper)
-#   DISCORD_DEPLOY_WEBHOOK — (Optional) Discord webhook URL for deploy notifications
-# ---------------------------------------------------------------------------
+# Restrict GITHUB_TOKEN permissions to the minimum needed
+permissions:
+  contents: read
 
 jobs:
-  # -------------------------------------------------------------------------
-  # Job 1: Build validation
-  # Runs on GitHub's runners to catch build errors BEFORE touching production.
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Job 1: Build validation on GitHub-hosted runner
+  # ---------------------------------------------------------------------------
   build-check:
     name: Build Check
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 20 LTS
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          # Cache the npm store between runs to speed up npm ci
           cache: 'npm'
 
+      # npm ci: honours package-lock.json exactly, fails if lock is out of sync.
+      # PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: avoids downloading 300 MB of Chromium
+      # on the CI runner — we only need to verify the Next.js build compiles.
       - name: Install dependencies
+        env:
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Build Next.js app
-        run: npm run build
+      # Provide the minimum env vars Next.js needs at build time so that
+      # NEXT_PUBLIC_* references don't cause build errors.
+      - name: Build Next.js
+        if: ${{ github.event.inputs.skip_build != 'true' }}
         env:
           NODE_ENV: production
-          # Stub env vars so the build doesn't fail on missing values
-          NEXT_PUBLIC_BASE_URL: https://example.com
+          NEXT_PUBLIC_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://example.com' }}
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+        run: npm run build
 
-      - name: Upload build artifact (optional — for inspection)
-        if: always()
+      # Save the compiled .next/ directory so the deploy job can rsync it to
+      # the server instead of rebuilding there (faster + identical binary).
+      # Exclude .next/cache — it can be hundreds of MB and is not needed.
+      - name: Upload .next artifact
+        if: ${{ github.event.inputs.skip_build != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
-          path: .next/
-          retention-days: 3
+          path: |
+            .next/
+            !.next/cache/
+          # Short retention — only needed for the deploy job that follows
+          retention-days: 1
 
-  # -------------------------------------------------------------------------
-  # Job 2: Deploy to droplet
-  # Only runs after build-check passes.
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Job 2: Deploy to Digital Ocean droplet
+  # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to Droplet
     runs-on: ubuntu-latest
     needs: build-check
-    timeout-minutes: 15
+    timeout-minutes: 20
+    # Links this job to a GitHub Environment named "production".
+    # Add required reviewers in Settings -> Environments for manual approval.
     environment: production
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
-      - name: Set up SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
+      # Download the .next/ artefact built in job 1 so we can rsync it
+      - name: Download .next artefact
+        if: ${{ github.event.inputs.skip_build != 'true' }}
+        uses: actions/download-artifact@v4
         with:
-          ssh-private-key: ${{ secrets.DROPLET_SSH_KEY }}
+          name: nextjs-build-${{ github.sha }}
+          path: .next/
 
-      - name: Add droplet to known hosts
+      # Write the SSH private key to a locked-down temp file.
+      # ssh-agent is intentionally NOT used here — a file is simpler and
+      # avoids leaving the key loaded in memory after this step.
+      - name: Install SSH key
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Populate known_hosts so SSH doesn't prompt for host verification
+          ssh-keyscan \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            "${{ secrets.DROPLET_HOST }}" \
+            >> ~/.ssh/known_hosts 2>/dev/null
+          echo "SSH key and known_hosts configured."
 
-      - name: Notify Discord — deploy starting
-        if: ${{ vars.DISCORD_DEPLOY_WEBHOOK != '' || secrets.DISCORD_DEPLOY_WEBHOOK != '' }}
-        run: |
-          curl -s -X POST "${{ secrets.DISCORD_DEPLOY_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"Deploying Kijiji Scraper\",
-                \"description\": \"Branch: \`${{ github.ref_name }}\` | Commit: \`${{ github.sha }}\`\",
-                \"color\": 16776960,
-                \"footer\": {\"text\": \"Started by ${{ github.actor }}\"}
-              }]
-            }" || true
-
-      - name: Deploy via SSH
+      # Build .env.production from GitHub Secrets and encode it as base64 so
+      # it can be passed safely as a single environment variable over SSH
+      # (avoids shell escaping issues with special characters in webhook URLs).
+      - name: Build .env.production (base64)
+        id: env_b64
         env:
-          DEPLOY_HOST: ${{ secrets.DROPLET_HOST }}
-          DEPLOY_USER: ${{ secrets.DROPLET_USER }}
-          BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
-          SKIP_BUILD: ${{ github.event.inputs.skip_build || 'false' }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          APP_PORT: ${{ secrets.APP_PORT || '3000' }}
+          APP_DISCORD_WEBHOOK_URL: ${{ secrets.APP_DISCORD_WEBHOOK_URL }}
+          APP_SLACK_WEBHOOK_URL: ${{ secrets.APP_SLACK_WEBHOOK_URL }}
+          APP_DISCORD_DEPLOY_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
+          APP_SCRAPER_DEFAULT_URL: ${{ secrets.APP_SCRAPER_DEFAULT_URL || 'https://www.kijiji.ca/b-canada/vending-machine/k0l0?view=list' }}
+          APP_PUPPETEER_PATH: ${{ secrets.APP_PUPPETEER_PATH || '/usr/bin/chromium-browser' }}
         run: |
-          ssh -o StrictHostKeyChecking=no \
-              "${{ secrets.DROPLET_USER || 'scraper' }}@${{ secrets.DROPLET_HOST }}" \
-              bash << 'REMOTE'
-            set -euo pipefail
+          ENV_FILE=$(cat <<EOF
+          NODE_ENV=production
+          PORT=${APP_PORT}
+          NEXT_PUBLIC_BASE_URL=${APP_BASE_URL}
+          DISCORD_WEBHOOK_URL=${APP_DISCORD_WEBHOOK_URL}
+          DISCORD_DEPLOY_WEBHOOK=${APP_DISCORD_DEPLOY_WEBHOOK}
+          SLACK_WEBHOOK_URL=${APP_SLACK_WEBHOOK_URL}
+          SESSION_SECRET=${APP_SESSION_SECRET}
+          SCRAPER_DEFAULT_URL=${APP_SCRAPER_DEFAULT_URL}
+          SCRAPER_DEFAULT_INTERVAL=60000
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+          PUPPETEER_EXECUTABLE_PATH=${APP_PUPPETEER_PATH}
+          EOF
+          )
+          # Strip leading whitespace introduced by heredoc indentation
+          ENV_FILE=$(echo "$ENV_FILE" | sed 's/^[[:space:]]*//')
+          echo "value=$(echo "$ENV_FILE" | base64 -w 0)" >> "$GITHUB_OUTPUT"
 
-            APP_DIR="/var/www/web-scraper"
-            BRANCH="${BRANCH:-main}"
-            RELEASE_ID="$(date +%Y%m%d_%H%M%S)_gha"
-            RELEASE_DIR="$APP_DIR/releases/$RELEASE_ID"
+      # Create a tarball of the project for transfer.
+      # The .next/ directory from the artefact download is included here so the
+      # server does not need to rebuild. Persistent data and secrets are excluded.
+      - name: Create release tarball
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.next/cache' \
+            --exclude='data' \
+            --exclude='scraper-config.json' \
+            --exclude='scraper-status.json' \
+            --exclude='facebook-scraper-status.json' \
+            --exclude='*.log' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='tmp' \
+            --exclude='temp' \
+            -czf /tmp/release.tar.gz .
+          echo "Tarball size: $(du -sh /tmp/release.tar.gz | cut -f1)"
 
-            echo "[INFO] Starting GHA-triggered deployment (release: $RELEASE_ID)"
+      # Copy the tarball and the remote deploy script to the server in parallel
+      - name: Upload release tarball and deploy script
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -p ${{ secrets.DROPLET_SSH_PORT || '22' }} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
+          SCP_OPTS="-i ~/.ssh/deploy_key -P ${{ secrets.DROPLET_SSH_PORT || '22' }} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
+          DEST="${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}"
 
-            # Ensure layout
-            mkdir -p "$APP_DIR/releases" "$APP_DIR/shared/data" "$APP_DIR/shared/logs"
+          scp $SCP_OPTS /tmp/release.tar.gz "${DEST}:/tmp/release-${{ github.sha }}.tar.gz"
+          scp $SCP_OPTS deploy-scripts/08-remote-deploy.sh "${DEST}:/tmp/08-remote-deploy.sh"
+          echo "Upload complete."
 
-            # Pull latest
-            cd "$APP_DIR/repo"
-            git fetch --all --prune
-            git checkout "$BRANCH"
-            git reset --hard "origin/$BRANCH"
+      # SSH into the server and execute the remote deploy script.
+      # All deploy logic lives in 08-remote-deploy.sh for easier local testing.
+      - name: Run remote deploy
+        run: |
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "chmod +x /tmp/08-remote-deploy.sh && \
+             ENV_B64='${{ steps.env_b64.outputs.value }}' \
+             RELEASE_ARCHIVE='/tmp/release-${{ github.sha }}.tar.gz' \
+             GIT_SHA='${{ github.sha }}' \
+             SKIP_BUILD='${{ github.event.inputs.skip_build || 'false' }}' \
+             APP_USER='${{ secrets.DROPLET_USER }}' \
+             bash /tmp/08-remote-deploy.sh"
 
-            # Create release snapshot
-            rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' \
-              "$APP_DIR/repo/" "$RELEASE_DIR/"
+      # Verify the app is serving HTTP after PM2 reload.
+      # Checks localhost:3000 on the server side (avoids DNS/SSL timing issues).
+      - name: Health check (remote)
+        run: |
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "$(cat <<'HEALTHCHECK'
+              set -e
+              echo 'Waiting for Next.js to be ready...'
+              for i in $(seq 1 18); do
+                CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:3000 2>/dev/null || echo 000)
+                if echo "$CODE" | grep -qE '^(200|301|302|304)$'; then
+                  echo "Health check passed (HTTP $CODE) on attempt $i"
+                  exit 0
+                fi
+                echo "Attempt $i/18: HTTP $CODE — retrying in 5s..."
+                sleep 5
+              done
+              echo "ERROR: Health check failed after 90 seconds"
+              pm2 logs next-app --lines 30 --nostream || true
+              exit 1
+            HEALTHCHECK
+            )"
 
-            # Link shared persistent files
-            ln -sfn "$APP_DIR/shared/data"                        "$RELEASE_DIR/data"
-            ln -sfn "$APP_DIR/shared/.env.production"             "$RELEASE_DIR/.env.production"        2>/dev/null || true
-            ln -sfn "$APP_DIR/shared/scraper-config.json"         "$RELEASE_DIR/scraper-config.json"    2>/dev/null || true
-            ln -sfn "$APP_DIR/shared/scraper-status.json"         "$RELEASE_DIR/scraper-status.json"    2>/dev/null || true
-            ln -sfn "$APP_DIR/shared/facebook-scraper-status.json" "$RELEASE_DIR/facebook-scraper-status.json" 2>/dev/null || true
+      # Always clean up the SSH key — even on failure
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
 
-            if [[ -f "$APP_DIR/shared/ecosystem.config.js" ]]; then
-              cp "$APP_DIR/shared/ecosystem.config.js" "$RELEASE_DIR/ecosystem.config.js"
-            fi
-
-            # Install deps
-            cd "$RELEASE_DIR"
-            export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-            export PUPPETEER_EXECUTABLE_PATH="$(command -v chromium-browser 2>/dev/null || command -v chromium || echo /usr/bin/chromium)"
-            npm ci --prefer-offline --no-audit --no-fund
-
-            # Build
-            if [[ "${SKIP_BUILD:-false}" != "true" ]]; then
-              if [[ -f "$APP_DIR/shared/.env.production" ]]; then
-                set -a; source "$APP_DIR/shared/.env.production"; set +a
-              fi
-              npm run build
-            fi
-
-            # Atomic symlink swap
-            ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
-
-            # Zero-downtime reload
-            cd "$APP_DIR/current"
-            if pm2 list | grep -qE "next-app|scraper-worker"; then
-              pm2 reload ecosystem.config.js --update-env
-            else
-              pm2 start ecosystem.config.js --env production
-            fi
-            pm2 save
-
-            # Health check
-            for i in $(seq 1 15); do
-              if curl -sf "http://localhost:3000" >/dev/null 2>&1; then
-                echo "[OK] Health check passed."
-                break
-              fi
-              echo "[INFO] Waiting for app... ($i/15)"
-              sleep 2
-            done
-
-            # Prune old releases
-            ls -1t "$APP_DIR/releases" | tail -n +6 | while read -r old; do
-              rm -rf "$APP_DIR/releases/$old"
-            done
-
-            echo "[OK] Deployment $RELEASE_ID complete."
-          REMOTE
-
-      - name: Notify Discord — deploy succeeded
+      # -----------------------------------------------------------------------
+      # Discord notifications
+      # The || true at the end of each curl means a notification failure
+      # never marks the deployment as failed.
+      # -----------------------------------------------------------------------
+      - name: Discord — deploy succeeded
         if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
         run: |
-          DURATION=${{ github.run_number }}
-          curl -s -X POST "${{ secrets.DISCORD_DEPLOY_WEBHOOK }}" \
+          [ -z "$DISCORD_WEBHOOK" ] && exit 0
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' | cut -c1-100)
+          curl -s -X POST "$DISCORD_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"Deployment Succeeded\",
-                \"description\": \"Branch: \`${{ github.ref_name }}\` | [View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
-                \"color\": 3066993,
-                \"footer\": {\"text\": \"${{ github.actor }} | ${{ github.sha }}\"}
+            -d "$(cat <<JSON
+            {
+              "embeds": [{
+                "title": "Deployment Succeeded",
+                "color": 3066993,
+                "fields": [
+                  {"name": "Commit", "value": "\`${SHORT_SHA}\` ${COMMIT_MSG}", "inline": false},
+                  {"name": "Author", "value": "${{ github.actor }}", "inline": true},
+                  {"name": "Branch", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "Run", "value": "[#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": true}
+                ]
               }]
-            }" || true
+            }
+          JSON
+          )" || true
 
-      - name: Notify Discord — deploy failed
+      - name: Discord — deploy failed
         if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
         run: |
-          curl -s -X POST "${{ secrets.DISCORD_DEPLOY_WEBHOOK }}" \
+          [ -z "$DISCORD_WEBHOOK" ] && exit 0
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          curl -s -X POST "$DISCORD_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"Deployment FAILED\",
-                \"description\": \"Branch: \`${{ github.ref_name }}\` | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
-                \"color\": 15158332,
-                \"footer\": {\"text\": \"${{ github.actor }} | ${{ github.sha }}\"}
+            -d "$(cat <<JSON
+            {
+              "embeds": [{
+                "title": "Deployment FAILED",
+                "color": 15158332,
+                "description": "See the [Actions run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.",
+                "fields": [
+                  {"name": "Commit", "value": "\`${SHORT_SHA}\`", "inline": true},
+                  {"name": "Branch", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "Triggered by", "value": "${{ github.actor }}", "inline": true}
+                ]
               }]
-            }" || true
+            }
+          JSON
+          )" || true

@@ -1,0 +1,141 @@
+# =============================================================================
+# GitHub Actions — Update .env.production on the server
+# Project: Kijiji Competitor Scraper
+#
+# Trigger: MANUAL ONLY (workflow_dispatch)
+#
+# Use this workflow when you change GitHub Secrets (webhook URLs, session
+# secret, etc.) and want them to take effect on the server WITHOUT doing a
+# full code deployment.
+#
+# What it does:
+#   1. Rebuilds .env.production from the current GitHub Secrets
+#   2. Writes it to /var/www/web-scraper/shared/.env.production over SSH
+#   3. Sends pm2 reload --update-env so both processes pick up the new values
+#      without downtime
+#
+# Required GitHub Secrets: same as deploy.yml
+# =============================================================================
+
+name: Update Environment Variables
+
+on:
+  workflow_dispatch:
+    inputs:
+      restart_scraper:
+        description: 'Also restart scraper-worker (picks up new webhook URLs immediately)'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-env:
+    name: Push .env.production to server
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+
+    steps:
+      - name: Checkout (needed for git info in notification)
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            "${{ secrets.DROPLET_HOST }}" \
+            >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Build .env.production (base64)
+        id: env_b64
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          APP_PORT: ${{ secrets.APP_PORT || '3000' }}
+          APP_DISCORD_WEBHOOK_URL: ${{ secrets.APP_DISCORD_WEBHOOK_URL }}
+          APP_SLACK_WEBHOOK_URL: ${{ secrets.APP_SLACK_WEBHOOK_URL }}
+          APP_DISCORD_DEPLOY_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
+          APP_SCRAPER_DEFAULT_URL: ${{ secrets.APP_SCRAPER_DEFAULT_URL || 'https://www.kijiji.ca/b-canada/vending-machine/k0l0?view=list' }}
+          APP_PUPPETEER_PATH: ${{ secrets.APP_PUPPETEER_PATH || '/usr/bin/chromium-browser' }}
+        run: |
+          ENV_FILE=$(cat <<EOF
+          NODE_ENV=production
+          PORT=${APP_PORT}
+          NEXT_PUBLIC_BASE_URL=${APP_BASE_URL}
+          DISCORD_WEBHOOK_URL=${APP_DISCORD_WEBHOOK_URL}
+          DISCORD_DEPLOY_WEBHOOK=${APP_DISCORD_DEPLOY_WEBHOOK}
+          SLACK_WEBHOOK_URL=${APP_SLACK_WEBHOOK_URL}
+          SESSION_SECRET=${APP_SESSION_SECRET}
+          SCRAPER_DEFAULT_URL=${APP_SCRAPER_DEFAULT_URL}
+          SCRAPER_DEFAULT_INTERVAL=60000
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+          PUPPETEER_EXECUTABLE_PATH=${APP_PUPPETEER_PATH}
+          EOF
+          )
+          ENV_FILE=$(echo "$ENV_FILE" | sed 's/^[[:space:]]*//')
+          echo "value=$(echo "$ENV_FILE" | base64 -w 0)" >> "$GITHUB_OUTPUT"
+
+      - name: Write .env.production and reload PM2
+        run: |
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "$(cat <<REMOTE
+              set -euo pipefail
+              SHARED='/var/www/web-scraper/shared'
+              ENV_B64='${{ steps.env_b64.outputs.value }}'
+              echo \"\$ENV_B64\" | base64 -d > \"\${SHARED}/.env.production\"
+              chmod 640 \"\${SHARED}/.env.production\"
+              echo '[OK] .env.production written.'
+
+              # Reload both PM2 processes to pick up the new env vars
+              pm2 reload /var/www/web-scraper/current/ecosystem.config.js \\
+                --only next-app --update-env || true
+
+              if [[ '${{ github.event.inputs.restart_scraper }}' == 'true' ]]; then
+                pm2 restart /var/www/web-scraper/current/ecosystem.config.js \\
+                  --only scraper-worker --update-env || true
+                echo '[OK] scraper-worker restarted.'
+              fi
+
+              pm2 save --force >/dev/null
+              echo '[OK] PM2 processes reloaded with new environment.'
+            REMOTE
+            )"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Discord notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          STATUS: ${{ job.status }}
+        run: |
+          [ -z "$DISCORD_WEBHOOK" ] && exit 0
+          COLOR=3066993
+          TITLE="Environment Updated"
+          [ "$STATUS" != "success" ] && COLOR=15158332 && TITLE="Environment Update FAILED"
+          curl -s -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"${TITLE}\",
+                \"color\": ${COLOR},
+                \"fields\": [
+                  {\"name\": \"Triggered by\", \"value\": \"${{ github.actor }}\", \"inline\": true},
+                  {\"name\": \"Scraper restarted\", \"value\": \"${{ github.event.inputs.restart_scraper }}\", \"inline\": true}
+                ]
+              }]
+            }" || true
