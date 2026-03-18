@@ -1,3 +1,7 @@
+// Server-only guard: causes a build error if this module is accidentally
+// imported by a Client Component.
+import 'server-only';
+
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -150,7 +154,7 @@ async function handleStart(mode = 'all') {
   try {
     console.log('[Facebook API] Starting Facebook scraper...');
 
-    facebookProcess = spawn('node', ['facebook-worker-runner.js'], {
+    facebookProcess = spawn('node', [path.join(process.cwd(), 'facebook-worker-runner.js')], {
       cwd: process.cwd(),
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],

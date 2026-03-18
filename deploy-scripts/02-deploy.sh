@@ -140,6 +140,11 @@ ssh $SSH_OPTS "$SSH_TARGET" bash << REMOTE
     set +a
   fi
 
+  # Use Turbopack (Next.js 16 default).  The next.config.js turbopack block
+  # declares Node built-in externals so child_process, fs, etc. are never
+  # bundled.  Standalone scripts (scraper.js, facebook-worker-runner.js) are
+  # excluded from the bundle entirely — they are copied by rsync and run
+  # directly by PM2 / API spawn calls.
   npm run build
 
   echo ""

@@ -1,3 +1,7 @@
+// Server-only guard: causes a build error if this module is accidentally
+// imported by a Client Component.
+import 'server-only';
+
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -151,7 +155,7 @@ async function handleStart() {
     console.log('[API] Starting scraper...');
 
     // Spawn scraper process
-    scraperProcess = spawn('node', ['scraper.js'], {
+    scraperProcess = spawn('node', [path.join(process.cwd(), 'scraper.js')], {
       cwd: process.cwd(),
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],

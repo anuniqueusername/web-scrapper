@@ -6,7 +6,8 @@
   "scripts": {
     "start": "next dev",
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
+    "build:turbopack": "next build",
     "production": "next start",
     "legacy:scraper": "node scraper.js",
     "legacy:pool": "node scraper-pool.js",

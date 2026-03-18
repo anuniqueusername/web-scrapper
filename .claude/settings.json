@@ -13,7 +13,9 @@
       "Bash(npm start)",
       "Bash(npm list)",
       "Bash(npm install better-sqlite3)",
-      "Bash(cat \"d:/Projects/Competitor Scraper/deploy-scripts/workflows/\"*)"
+      "Bash(cat \"d:/Projects/Competitor Scraper/deploy-scripts/workflows/\"*)",
+      "Bash(npm run:*)",
+      "Bash(python -c \":*)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Competitor Scraper\\.github\\workflows"
