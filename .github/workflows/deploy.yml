@@ -121,29 +121,48 @@ jobs:
           echo "--- Node/npm versions ---"
           node --version
           npm --version
+          echo "--- Current directory ---"
+          pwd
+          echo "--- Files in root ---"
+          ls -la | head -20
           echo "--- Starting next build --webpack ---"
-          npm run build
-          echo "--- Build completed ---"
+          npm run build || { echo "BUILD FAILED"; cat .next/BUILD_ID 2>/dev/null || echo "No BUILD_ID found"; exit 1; }
+          echo "--- Build completed successfully ---"
+          echo "--- Checking .next/ exists ---"
+          test -d .next && echo ".next/ directory exists" || echo "ERROR: .next/ directory missing"
 
       # Verify .next/ was actually produced before attempting to upload.
       # next build --webpack writes .next/BUILD_ID on success; if it is absent
       # the build silently failed and we must abort here with a clear message
       # rather than letting the upload step emit the cryptic "No files found" error.
       - name: Verify build output
-        if: ${{ github.event.inputs.skip_build != 'true' }}
+        if: ${{ github.event.inputs.skip_build != 'true' && always() }}
         run: |
-          echo "--- .next/ directory contents ---"
-          ls -la .next/ || { echo "ERROR: .next/ directory does not exist — build failed"; exit 1; }
-          if [ ! -f .next/BUILD_ID ]; then
-            echo "ERROR: .next/BUILD_ID not found — Next.js build did not complete successfully"
-            echo "--- Full .next/ tree (for debugging) ---"
-            find .next -maxdepth 3 | sort || true
+          echo "--- Checking for .next/ directory ---"
+          if [ ! -d .next ]; then
+            echo "❌ ERROR: .next/ directory does not exist — the build failed"
+            echo "--- Listing root directory ---"
+            ls -la
             exit 1
           fi
-          echo "BUILD_ID: $(cat .next/BUILD_ID)"
+          echo "✓ .next/ directory exists"
+
+          echo "--- Checking for BUILD_ID ---"
+          if [ ! -f .next/BUILD_ID ]; then
+            echo "❌ ERROR: .next/BUILD_ID not found — Next.js build did not complete successfully"
+            echo "--- Full .next/ tree (for debugging) ---"
+            find .next -type f -maxdepth 2 | head -30 | sort
+            exit 1
+          fi
+          echo "✓ BUILD_ID found: $(cat .next/BUILD_ID)"
+
+          echo "--- .next/ directory size ---"
+          du -sh .next/
+
           echo "--- Top-level .next/ entries ---"
-          find .next -maxdepth 1 | sort
-          echo "--- Build output verified ---"
+          ls -1 .next/
+
+          echo "--- Build output verified successfully ---"
 
       # Save the compiled .next/ directory so the deploy job can rsync it to
       # the server instead of rebuilding there (faster + identical binary).
