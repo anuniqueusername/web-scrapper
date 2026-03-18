@@ -236,8 +236,8 @@ jobs:
       - name: Install SSH key
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           # Populate known_hosts so SSH doesn't prompt for host verification
           ssh-keyscan \
             -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
@@ -311,18 +311,18 @@ jobs:
           DROPLET_HOST=$(echo -n "${DROPLET_HOST}" | tr -d '\n' | xargs)
           DEST="${DROPLET_USER}@${DROPLET_HOST}"
 
-          SCP_OPTS="-i ~/.ssh/authorized_keys -P ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
+          SCP_OPTS="-i ~/.ssh/deploy_key -P ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
 
           echo "--- SSH Debug Info ---"
           echo "Destination: ${DEST}"
           echo "SSH Port: ${SSH_PORT}"
-          echo "Key file: ~/.ssh/authorized_keys"
-          ls -la ~/.ssh/authorized_keys
+          echo "Key file: ~/.ssh/deploy_key"
+          ls -la ~/.ssh/deploy_key
           echo "Key fingerprint:"
-          ssh-keygen -lf ~/.ssh/authorized_keys || true
+          ssh-keygen -lf ~/.ssh/deploy_key || true
           echo ""
           echo "--- Testing SSH connection ---"
-          ssh -i ~/.ssh/authorized_keys -p "${SSH_PORT}" -o ConnectTimeout=10 "${DEST}" "echo 'SSH connection successful'" || echo "SSH connection failed"
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o ConnectTimeout=10 "${DEST}" "echo 'SSH connection successful'" || echo "SSH connection failed"
           echo ""
           echo "--- Uploading files ---"
           scp $SCP_OPTS /tmp/release.tar.gz "${DEST}:/tmp/release-${{ github.sha }}.tar.gz"
@@ -334,7 +334,7 @@ jobs:
       - name: Run remote deploy
         run: |
           ssh \
-            -i ~/.ssh/authorized_keys \
+            -i ~/.ssh/deploy_key \
             -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
             -o BatchMode=yes \
             -o ConnectTimeout=30 \
@@ -353,7 +353,7 @@ jobs:
       - name: Health check (remote)
         run: |
           ssh \
-            -i ~/.ssh/authorized_keys \
+            -i ~/.ssh/deploy_key \
             -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
             -o BatchMode=yes \
             -o ConnectTimeout=30 \
@@ -380,7 +380,7 @@ jobs:
       # Always clean up the SSH key — even on failure
       - name: Remove SSH key
         if: always()
-        run: rm -f ~/.ssh/authorized_keys
+        run: rm -f ~/.ssh/deploy_key
 
       # -----------------------------------------------------------------------
       # Discord notifications

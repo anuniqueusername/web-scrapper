@@ -46,8 +46,8 @@ jobs:
       - name: Install SSH key
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           ssh-keyscan \
             -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
             "${{ secrets.DROPLET_HOST }}" \
@@ -58,7 +58,7 @@ jobs:
         run: |
           TARGET_RELEASE="${{ github.event.inputs.release_id }}"
           ssh \
-            -i ~/.ssh/authorized_keys \
+            -i ~/.ssh/deploy_key \
             -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \
             -o BatchMode=yes \
             -o ConnectTimeout=30 \
@@ -130,7 +130,7 @@ jobs:
 
       - name: Remove SSH key
         if: always()
-        run: rm -f ~/.ssh/authorized_keys
+        run: rm -f ~/.ssh/deploy_key
 
       - name: Discord notification
         if: always()
