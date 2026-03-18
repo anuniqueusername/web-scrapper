@@ -25,7 +25,8 @@ Full production deployment infrastructure has been created for the Kijiji Compet
 
 ## Server User
 
-- Non-root app user: `scraper` (scripts/ set) or `deploy` (deploy-scripts/ set)
+- GitHub Actions deploy: SSHes as `root` (DROPLET_USER secret = root). Files in `/var/www/web-scraper/` are root-owned.
+- Manual rsync deploy: uses `deploy` user, files live in `/home/deploy/app/`
 - Password login disabled; SSH key auth only
 
 ## PM2 Processes
@@ -103,8 +104,11 @@ The `npm run start` script currently runs `next dev` (not `next start`). The cor
 
 ### Key design decisions
 - .next/ is built on GitHub runner, included in tarball — server never rebuilds
-- SKIP_BUILD=true path: trusts the tarball's .next/ directory as-is
-- ENV_B64: .env.production passed as base64 over SSH to avoid shell escaping issues
+- SKIP_BUILD is hardcoded to 'true' in the workflow SSH call (not derived from the `skip_build` input). The `skip_build` input only controls whether the CI build step runs; the server-side build is always skipped because the tarball always ships .next/.
+- Tarball is verified with `gzip -t` before extraction; extraction errors are surfaced cleanly with a captured stderr log
+- .next/BUILD_ID is verified after extraction when SKIP_BUILD=true — a missing BUILD_ID is a hard failure
+- ENV_B64: .env.production passed as base64 over SSH to avoid shell escaping issues with webhook URLs
+- Placeholder files (scraper-config.json etc.) are created with `echo '{}'` only if absent — avoids zeroing out existing config on re-run
 - pm2 reload (next-app) vs pm2 restart (scraper-worker): cluster reload is zero-downtime; scraper cannot safely hot-reload because Puppeteer holds a browser process
 
 ## GitHub Secrets Required

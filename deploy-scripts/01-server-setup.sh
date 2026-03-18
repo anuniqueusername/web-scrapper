@@ -14,11 +14,14 @@
 # =============================================================================
 set -e
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------root-----------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DEPLOY_USER="deploy"
+DEPLOY_USER="root"
 APP_DIR="/home/deploy/app"
+# GitHub Actions deploys to /var/www/web-scraper as root (see 08-remote-deploy.sh).
+# The legacy /home/deploy/app path is kept for the manual rsync workflow (02-deploy.sh).
+WEBROOT="/var/www/web-scraper"
 NODE_VERSION="20"
 
 # ---------------------------------------------------------------------------
@@ -76,10 +79,23 @@ else
   success "User '$DEPLOY_USER' created and added to sudo group."
 fi
 
-# Create the app directory and hand it to the deploy user
+# Create the legacy manual-deploy app directory and hand it to the deploy user
 mkdir -p "$APP_DIR/data"
 chown -R "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER"
 success "App directory created at $APP_DIR"
+
+# Create the GitHub Actions deployment directory layout.
+# 08-remote-deploy.sh expects /var/www/web-scraper/{releases,shared,current}.
+# The root user owns this tree because GitHub Actions SSHes in as root.
+info "Creating GitHub Actions deployment directory layout..."
+mkdir -p \
+  "${WEBROOT}/releases" \
+  "${WEBROOT}/shared/data" \
+  "${WEBROOT}/shared/logs"
+# Root owns the webroot; data/ is writable so the scraper process can write SQLite/JSON
+chmod 755 "${WEBROOT}" "${WEBROOT}/shared"
+chmod 700 "${WEBROOT}/shared/data"   # tighten: only the process owner can read scrape data
+success "GitHub Actions webroot created at ${WEBROOT}"
 
 # ---------------------------------------------------------------------------
 # 3. Node.js 20 LTS via NodeSource
@@ -197,6 +213,7 @@ success "UFW firewall enabled: ports 22, 80, 443 open. Port 3000 internal only."
 # ---------------------------------------------------------------------------
 info "Configuring log rotation..."
 cat > /etc/logrotate.d/competitor-scraper << LOGROTATE
+# Manual deploy path (02-deploy.sh / 07-update.sh)
 /home/deploy/app/*.log {
     daily
     missingok
@@ -205,6 +222,20 @@ cat > /etc/logrotate.d/competitor-scraper << LOGROTATE
     delaycompress
     notifempty
     create 0640 deploy deploy
+    sharedscripts
+    postrotate
+        pm2 reloadLogs 2>/dev/null || true
+    endscript
+}
+# GitHub Actions deploy path (08-remote-deploy.sh)
+/var/www/web-scraper/shared/logs/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
     sharedscripts
     postrotate
         pm2 reloadLogs 2>/dev/null || true
@@ -221,15 +252,35 @@ echo -e "${GREEN}============================================================${N
 echo -e "${GREEN}  Server setup complete!${NC}"
 echo -e "${GREEN}============================================================${NC}"
 echo ""
-echo "  Next steps (from your LOCAL machine):"
+echo "  Next steps:"
+echo ""
+echo "  --- GitHub Actions CI/CD path (recommended) ---"
+echo ""
+echo "  1. Add the following GitHub Secrets to your repository"
+echo "     (Settings -> Secrets and variables -> Actions):"
+echo "       DROPLET_HOST             <this server's IP>"
+echo "       DROPLET_USER             root"
+echo "       DROPLET_SSH_KEY          <contents of your SSH private key>"
+echo "       DROPLET_SSH_PORT         22"
+echo "       APP_BASE_URL             https://yourdomain.com"
+echo "       APP_PORT                 3000"
+echo "       APP_DISCORD_WEBHOOK_URL  <optional>"
+echo "       APP_SLACK_WEBHOOK_URL    <optional>"
+echo "       APP_SESSION_SECRET       <64-char random hex>"
+echo "       APP_PUPPETEER_PATH       $CHROMIUM_PATH"
+echo ""
+echo "  2. Push to the 'main' branch — the workflow builds .next/ on the"
+echo "     CI runner, creates a tarball, uploads it, and runs 08-remote-deploy.sh."
+echo "     No manual steps are needed after this."
+echo ""
+echo "  --- Manual deploy path (fallback) ---"
 echo ""
 echo "  1. Copy your SSH public key to the deploy user:"
 echo "       ssh-copy-id deploy@<DROPLET_IP>"
 echo ""
 echo "  2. Copy your .env.production file to the server:"
 echo "       scp .env.production deploy@<DROPLET_IP>:$APP_DIR/.env.production"
-echo ""
-echo "     Add this line to your .env.production:"
+echo "     Required entries:"
 echo "       PUPPETEER_EXECUTABLE_PATH=$CHROMIUM_PATH"
 echo "       PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true"
 echo ""
