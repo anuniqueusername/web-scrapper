@@ -187,7 +187,7 @@ jobs:
       # the server instead of rebuilding there (faster + identical binary).
       - name: Upload .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
-        uses: actions/upload-artifact@v4.8.0
+        uses: actions/upload-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
           path: .next/
@@ -215,7 +215,7 @@ jobs:
       # Download the .next/ artefact built in job 1 so we can rsync it
       - name: Download .next artifact
         if: ${{ github.event.inputs.skip_build != 'true' }}
-        uses: actions/download-artifact@v4.1.8
+        uses: actions/download-artifact@v4
         with:
           name: nextjs-build-${{ github.sha }}
           path: .next/
