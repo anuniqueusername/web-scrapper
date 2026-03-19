@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const OUTPUT_FILE = path.join(__dirname, 'data', 'listings.json');
+const OUTPUT_FILE = path.join(__dirname, '..', 'data', 'listings.json');
 const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
 
 async function sendAllListings() {

@@ -2,12 +2,12 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.join(__dirname, '..', 'data');
 const OUTPUT_FILE = path.join(DATA_DIR, 'listings.json');
-const CONFIG_FILE = path.join(__dirname, 'scraper-config.json');
-const STATUS_FILE = path.join(__dirname, 'scraper-status.json');
+const CONFIG_FILE = path.join(__dirname, '..', 'scraper-config.json');
+const STATUS_FILE = path.join(__dirname, '..', 'scraper-status.json');
 
 // Create data directory if it doesn't exist
 if (!fs.existsSync(DATA_DIR)) {

@@ -1,7 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, 'data', 'scraper.db');
+const DB_FILE = path.join(__dirname, '..', 'data', 'scraper.db');
 const db = new Database(DB_FILE);
 
 // Enable foreign keys

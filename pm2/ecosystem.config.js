@@ -84,7 +84,7 @@ module.exports = {
     // -------------------------------------------------------------------------
     {
       name: 'scraper-worker',
-      script: 'scraper.js',
+      script: 'scraper/scraper.js',
       cwd: APP_DIR,
 
       exec_mode: 'fork',

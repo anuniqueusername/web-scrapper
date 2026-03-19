@@ -155,7 +155,7 @@ async function handleStart() {
     console.log('[API] Starting scraper...');
 
     // Spawn scraper process
-    scraperProcess = spawn('node', [path.join(process.cwd(), 'scraper.js')], {
+    scraperProcess = spawn('node', [path.join(process.cwd(), 'scraper', 'scraper.js')], {
       cwd: process.cwd(),
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],

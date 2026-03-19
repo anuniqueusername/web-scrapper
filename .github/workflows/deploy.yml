@@ -236,8 +236,23 @@ jobs:
       - name: Install SSH key
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+
+          # Write the key, then strip carriage returns (\r) in case the GitHub
+          # secret was created on Windows or has CRLF line endings.
+          # CRLF in a PEM key makes it unreadable to ssh/ssh-keygen.
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" \
+            | tr -d '\r' \
+            > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+
+          # Print the fingerprint so it can be compared against authorized_keys on
+          # the droplet — a mismatch here is the #1 cause of "Permission denied".
+          echo "--- Key fingerprint (compare this against authorized_keys on the droplet) ---"
+          ssh-keygen -lf ~/.ssh/deploy_key 2>/dev/null || echo "WARNING: ssh-keygen could not read the key — it may be malformed in the secret."
+          echo "--- Derived public key (this line must appear in ~/.ssh/authorized_keys on the droplet) ---"
+          ssh-keygen -yf ~/.ssh/deploy_key 2>/dev/null || echo "WARNING: Could not derive public key."
+          echo "--- End key info ---"
+
           # Populate known_hosts so SSH doesn't prompt for host verification
           ssh-keyscan \
             -p "${{ secrets.DROPLET_SSH_PORT || '22' }}" \

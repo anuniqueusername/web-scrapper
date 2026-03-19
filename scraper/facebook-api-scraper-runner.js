@@ -1,20 +1,20 @@
 const FacebookAPIScraper = require('./facebook-api-scraper');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // Get Discord webhook from environment (same as Kijiji scraper)
 const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL || '';
 
 // Example 1: Single city (Toronto)
 const scraperSingleCity = new FacebookAPIScraper(1, {
-  outputFile: path.join(__dirname, 'data', 'facebook-listings.json'),
+  outputFile: path.join(__dirname, '..', 'data', 'facebook-listings.json'),
   url: 'https://www.facebook.com/marketplace/toronto/search?daysSinceListed=1&query=vending%20machines',
   discordWebhookUrl: discordWebhookUrl
 });
 
 // Example 2: Multiple major Ontario cities
 const scraperMultiCity = new FacebookAPIScraper(2, {
-  outputFile: path.join(__dirname, 'data', 'facebook-listings.json'),
+  outputFile: path.join(__dirname, '..', 'data', 'facebook-listings.json'),
   cities: ['toronto', 'ottawa', 'mississauga', 'hamilton', 'london_ontario', 'kitchener'],
   delayBetweenCities: 2000, // 2 seconds between each city (default)
   discordWebhookUrl: discordWebhookUrl
@@ -22,7 +22,7 @@ const scraperMultiCity = new FacebookAPIScraper(2, {
 
 // Example 3: All major Ontario cities
 const scraperAllCities = new FacebookAPIScraper(3, {
-  outputFile: path.join(__dirname, 'data', 'facebook-listings.json'),
+  outputFile: path.join(__dirname, '..', 'data', 'facebook-listings.json'),
   cities: [
     'toronto', 'ottawa', 'mississauga', 'brampton', 'hamilton', 'london_ontario',
     'kitchener', 'waterloo', 'cambridge', 'guelph', 'barrie', 'thunder-bay',

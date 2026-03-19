@@ -1,20 +1,20 @@
 const FacebookWorker = require('./facebook-worker');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // Get Discord webhook from environment (same as Kijiji scraper)
 const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL || '';
 
 // Example 1: Single city (Toronto)
 const workerSingleCity = new FacebookWorker(1, {
-  outputFile: path.join(__dirname, 'data', 'facebook-listings.json'),
+  outputFile: path.join(__dirname, '..', 'data', 'facebook-listings.json'),
   url: 'https://www.facebook.com/marketplace/toronto/search?query=vending%20machines',
   discordWebhookUrl: discordWebhookUrl
 });
 
 // Example 2: Multiple major Ontario cities
 const workerMultiCity = new FacebookWorker(2, {
-  outputFile: path.join(__dirname, 'data', 'facebook-listings.json'),
+  outputFile: path.join(__dirname, '..', 'data', 'facebook-listings.json'),
   cities: ['toronto', 'ottawa', 'mississauga', 'hamilton', 'london_ontario', 'kitchener', 'whitby', 'peterborough', 'kingston'],
   delayBetweenCities: 2000, // 2 seconds between each city (default)
   discordWebhookUrl: discordWebhookUrl
@@ -22,7 +22,7 @@ const workerMultiCity = new FacebookWorker(2, {
 
 // Example 3: All major Ontario cities
 const workerAllCities = new FacebookWorker(3, {
-  outputFile: path.join(__dirname, 'data', 'facebook-listings.json'),
+  outputFile: path.join(__dirname, '..', 'data', 'facebook-listings.json'),
   cities: [
     'toronto', 'ottawa', 'mississauga', 'brampton', 'hamilton', 'london_ontario',
     'kitchener', 'waterloo', 'cambridge', 'guelph', 'barrie', 'thunder-bay',

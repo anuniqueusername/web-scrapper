@@ -154,7 +154,7 @@ async function handleStart(mode = 'all') {
   try {
     console.log('[Facebook API] Starting Facebook scraper...');
 
-    facebookProcess = spawn('node', [path.join(process.cwd(), 'facebook-worker-runner.js')], {
+    facebookProcess = spawn('node', [path.join(process.cwd(), 'scraper', 'facebook-worker-runner.js')], {
       cwd: process.cwd(),
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],

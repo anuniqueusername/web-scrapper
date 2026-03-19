@@ -1,0 +1,323 @@
+# =============================================================================
+# GitHub Actions — SSH Debug Deployment Workflow
+# Project: Kijiji Competitor Scraper
+#
+# Purpose : Verbose SSH troubleshooting workflow. Use this INSTEAD OF
+#           deploy.yml when experiencing "Permission denied (publickey)"
+#           failures. It prints every detail about the SSH handshake and
+#           key configuration so you can pinpoint the exact failure.
+#
+# Trigger : Manual only (workflow_dispatch). Push to main is NOT a trigger
+#           so this workflow doesn't interfere with normal deployments.
+#
+# Usage   : GitHub UI → Actions → "SSH Debug Deploy" → Run workflow
+#
+# Secrets required (same as deploy.yml):
+#   DROPLET_HOST, DROPLET_USER, DROPLET_SSH_KEY, DROPLET_SSH_PORT
+#
+# After the problem is identified and fixed, go back to using deploy.yml.
+# =============================================================================
+
+name: SSH Debug Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh_verbose_level:
+        description: 'SSH verbosity: 1=basic (-v), 2=detailed (-vv), 3=full (-vvv)'
+        required: false
+        default: '2'
+        type: choice
+        options: ['1', '2', '3']
+      run_full_deploy:
+        description: 'Run the full deploy after a successful SSH test? (false = SSH test only)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  ssh-debug:
+    name: SSH Debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Print the SSH key fingerprint stored in DROPLET_SSH_KEY.
+      #    This tells you EXACTLY which key GitHub Actions is attempting to use.
+      #    Compare this fingerprint against authorized_keys on the droplet.
+      # -----------------------------------------------------------------------
+      - name: Print key fingerprint from DROPLET_SSH_KEY secret
+        run: |
+          echo "================================================================"
+          echo "STEP 1: KEY FINGERPRINT FROM DROPLET_SSH_KEY SECRET"
+          echo "================================================================"
+          echo ""
+
+          # Write the key to a temp file exactly as it is stored in the secret
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          echo "--- Raw key file stats ---"
+          ls -la ~/.ssh/deploy_key
+          wc -c ~/.ssh/deploy_key        # size in bytes
+          wc -l ~/.ssh/deploy_key        # number of lines
+
+          echo ""
+          echo "--- First line of key (should be -----BEGIN ... KEY-----) ---"
+          head -1 ~/.ssh/deploy_key
+
+          echo ""
+          echo "--- Last line of key (should be -----END ... KEY-----) ---"
+          tail -1 ~/.ssh/deploy_key
+
+          echo ""
+          echo "--- Check for Windows CRLF line endings (shows ^M if present) ---"
+          cat -A ~/.ssh/deploy_key | head -3
+
+          echo ""
+          echo "--- SSH key fingerprint (this is what GitHub Actions offers to the server) ---"
+          if ssh-keygen -lf ~/.ssh/deploy_key 2>/dev/null; then
+            echo ""
+            echo "PUBLIC KEY (derived from private key — this must be in authorized_keys on the droplet):"
+            ssh-keygen -yf ~/.ssh/deploy_key 2>/dev/null || echo "ERROR: Could not derive public key — key may be malformed"
+          else
+            echo "ERROR: ssh-keygen could not read the key."
+            echo "The key stored in DROPLET_SSH_KEY secret is likely malformed."
+            echo ""
+            echo "Common causes:"
+            echo "  - Missing -----BEGIN OPENSSH PRIVATE KEY----- header"
+            echo "  - Windows CRLF line endings in the secret"
+            echo "  - Accidentally pasted the .pub file instead of the private key"
+            echo "  - Truncated key (secret has a character limit in some tools)"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 2. Confirm the target host/user from secrets (without printing secret values)
+      # -----------------------------------------------------------------------
+      - name: Print connection target (host/user)
+        run: |
+          echo "================================================================"
+          echo "STEP 2: CONNECTION TARGET"
+          echo "================================================================"
+          echo ""
+
+          DROPLET_USER="${{ secrets.DROPLET_USER }}"
+          DROPLET_HOST="${{ secrets.DROPLET_HOST }}"
+          DROPLET_SSH_PORT="${{ secrets.DROPLET_SSH_PORT }}"
+
+          # Strip whitespace/newlines — a common hidden issue
+          DROPLET_USER=$(echo -n "${DROPLET_USER}" | tr -d '\n\r' | xargs)
+          DROPLET_HOST=$(echo -n "${DROPLET_HOST}" | tr -d '\n\r' | xargs)
+          DROPLET_SSH_PORT=$(echo -n "${DROPLET_SSH_PORT}" | tr -d '\n\r' | xargs)
+          SSH_PORT="${DROPLET_SSH_PORT:-22}"
+
+          echo "User    : ${DROPLET_USER}"
+          echo "Host    : ${DROPLET_HOST}"
+          echo "Port    : ${SSH_PORT}"
+          echo "Dest    : ${DROPLET_USER}@${DROPLET_HOST}"
+          echo ""
+          echo "User length   : ${#DROPLET_USER} chars  (should be > 0, no leading/trailing spaces)"
+          echo "Host length   : ${#DROPLET_HOST} chars  (should be > 0, no spaces)"
+          echo ""
+
+          # Sanity checks
+          if [ -z "${DROPLET_USER}" ]; then
+            echo "ERROR: DROPLET_USER secret is empty. Set it in GitHub → Settings → Secrets."
+            exit 1
+          fi
+          if [ -z "${DROPLET_HOST}" ]; then
+            echo "ERROR: DROPLET_HOST secret is empty. Set it in GitHub → Settings → Secrets."
+            exit 1
+          fi
+
+          # Try to resolve the hostname to catch DNS issues early
+          echo "--- DNS lookup for DROPLET_HOST ---"
+          if nslookup "${DROPLET_HOST}" 2>/dev/null | grep -q "Address:"; then
+            echo "DNS resolved successfully."
+            nslookup "${DROPLET_HOST}" 2>/dev/null | grep "Address:" | tail -1
+          else
+            # Could be a raw IP — that's fine
+            echo "nslookup found nothing — host may be a raw IP address (that is OK)."
+          fi
+
+          # Ping test (ICMP — may be blocked by firewall, failure is not conclusive)
+          echo ""
+          echo "--- Ping test (1 packet, 5s timeout) ---"
+          ping -c 1 -W 5 "${DROPLET_HOST}" 2>&1 | head -5 || echo "Ping failed (firewall may block ICMP — not conclusive)"
+
+          # TCP port reachability test
+          echo ""
+          echo "--- TCP port ${SSH_PORT} reachability test ---"
+          if timeout 10 bash -c "echo > /dev/tcp/${DROPLET_HOST}/${SSH_PORT}" 2>/dev/null; then
+            echo "TCP port ${SSH_PORT} is OPEN — sshd is reachable."
+          else
+            echo "ERROR: TCP port ${SSH_PORT} is NOT reachable from GitHub Actions runner."
+            echo "Check: UFW firewall on the droplet, Digital Ocean Cloud Firewall, and that sshd is running."
+          fi
+
+          # Store stripped values for later steps
+          echo "DROPLET_USER_CLEAN=${DROPLET_USER}" >> "$GITHUB_ENV"
+          echo "DROPLET_HOST_CLEAN=${DROPLET_HOST}" >> "$GITHUB_ENV"
+          echo "SSH_PORT_CLEAN=${SSH_PORT}" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # 3. Populate known_hosts so StrictHostKeyChecking can be optionally used
+      # -----------------------------------------------------------------------
+      - name: Populate known_hosts
+        run: |
+          echo "================================================================"
+          echo "STEP 3: HOST KEY (known_hosts)"
+          echo "================================================================"
+          echo ""
+          SSH_PORT="${SSH_PORT_CLEAN}"
+          DROPLET_HOST="${DROPLET_HOST_CLEAN}"
+
+          echo "--- Scanning host key for ${DROPLET_HOST}:${SSH_PORT} ---"
+          ssh-keyscan -T 10 -p "${SSH_PORT}" "${DROPLET_HOST}" 2>&1 | tee /tmp/host_keys
+
+          if [ -s /tmp/host_keys ]; then
+            grep -v "^#" /tmp/host_keys >> ~/.ssh/known_hosts
+            echo ""
+            echo "Host key saved to known_hosts."
+            echo "Fingerprint of server's host key:"
+            ssh-keyscan -T 10 -p "${SSH_PORT}" "${DROPLET_HOST}" 2>/dev/null | ssh-keygen -lf /dev/stdin 2>/dev/null || true
+          else
+            echo "WARNING: ssh-keyscan returned nothing. The host may be unreachable on port ${SSH_PORT}."
+          fi
+
+      # -----------------------------------------------------------------------
+      # 4. Verbose SSH connection attempt
+      #    This is the core debug step. The verbose output shows:
+      #    - Which key files are being tried
+      #    - Whether the server ACCEPTED the key (vs silently rejecting it)
+      #    - The exact error the server sends back
+      # -----------------------------------------------------------------------
+      - name: Verbose SSH connection test
+        run: |
+          echo "================================================================"
+          echo "STEP 4: VERBOSE SSH CONNECTION ATTEMPT"
+          echo "================================================================"
+          echo ""
+
+          VERBOSE_FLAG="-$( printf 'v%.0s' $(seq 1 ${{ github.event.inputs.ssh_verbose_level || '2' }}) )"
+          SSH_PORT="${SSH_PORT_CLEAN}"
+
+          echo "SSH verbosity flag: ${VERBOSE_FLAG}"
+          echo "Connecting to: ${DROPLET_USER_CLEAN}@${DROPLET_HOST_CLEAN} on port ${SSH_PORT}"
+          echo ""
+          echo "--- SSH verbose output ---"
+
+          # Run verbose SSH. We use -o BatchMode=yes so it NEVER falls through to
+          # password prompt (that would hang the job). The || true prevents the step
+          # from failing outright so we capture the full log.
+          ssh ${VERBOSE_FLAG} \
+            -i ~/.ssh/deploy_key \
+            -p "${SSH_PORT}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=accept-new \
+            -o ServerAliveInterval=10 \
+            "${DROPLET_USER_CLEAN}@${DROPLET_HOST_CLEAN}" \
+            "echo '==> SSH CONNECTION SUCCESSFUL'; whoami; hostname; uptime" \
+            2>&1 || true
+
+          echo ""
+          echo "--- End of SSH verbose output ---"
+          echo ""
+          echo "How to read this output:"
+          echo "  'Offering public key' + 'Server accepts key' = SUCCESS path"
+          echo "  'Offering public key' + no 'Server accepts key' = key is NOT in authorized_keys"
+          echo "  'Permission denied (publickey)' = server rejected ALL keys tried"
+          echo "  'Connection refused' = sshd not running or port blocked"
+          echo "  'No route to host' = network/firewall issue"
+
+      # -----------------------------------------------------------------------
+      # 5. Try with StrictHostKeyChecking=no as a comparison
+      #    (rules out known_hosts as the cause)
+      # -----------------------------------------------------------------------
+      - name: SSH test with StrictHostKeyChecking=no (rules out known_hosts issue)
+        run: |
+          echo "================================================================"
+          echo "STEP 5: SSH TEST (StrictHostKeyChecking=no)"
+          echo "================================================================"
+          echo ""
+          echo "If this works but Step 4 failed, the issue is with known_hosts, not keys."
+          echo ""
+
+          ssh -v \
+            -i ~/.ssh/deploy_key \
+            -p "${SSH_PORT_CLEAN}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=no \
+            "${DROPLET_USER_CLEAN}@${DROPLET_HOST_CLEAN}" \
+            "echo 'SUCCESS: Connected with StrictHostKeyChecking=no'; whoami" \
+            2>&1 || echo "FAILED even with StrictHostKeyChecking=no (problem is with the key itself, not host verification)"
+
+      # -----------------------------------------------------------------------
+      # 6. Print what authorized_keys SHOULD contain
+      #    (makes it easy to copy-paste the correct key onto the droplet)
+      # -----------------------------------------------------------------------
+      - name: Print the public key to add to authorized_keys
+        run: |
+          echo "================================================================"
+          echo "STEP 6: PUBLIC KEY TO ADD TO authorized_keys ON THE DROPLET"
+          echo "================================================================"
+          echo ""
+          echo "If SSH is failing because the public key is not in authorized_keys,"
+          echo "copy the line below and append it to ~/.ssh/authorized_keys on the droplet."
+          echo ""
+          echo "--- PUBLIC KEY (one line) ---"
+          ssh-keygen -yf ~/.ssh/deploy_key 2>/dev/null || echo "Cannot derive public key — check key format."
+          echo ""
+          echo "Command to add this key on the droplet (run via DO web console):"
+          PUB_KEY=$(ssh-keygen -yf ~/.ssh/deploy_key 2>/dev/null || echo "")
+          if [ -n "${PUB_KEY}" ]; then
+            echo "  echo '${PUB_KEY}' >> ~/.ssh/authorized_keys"
+            echo "  chmod 600 ~/.ssh/authorized_keys"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 7. (Optional) Run the actual deploy if SSH passed and user requested it
+      # -----------------------------------------------------------------------
+      - name: Checkout (for full deploy)
+        if: ${{ github.event.inputs.run_full_deploy == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Run full deploy via remote deploy script
+        if: ${{ github.event.inputs.run_full_deploy == 'true' }}
+        run: |
+          echo "================================================================"
+          echo "STEP 7: FULL DEPLOY"
+          echo "================================================================"
+          echo "run_full_deploy=true — running the actual deployment now."
+          echo "For deploy details, see the deploy.yml workflow."
+          echo ""
+
+          # Quick sanity: does the remote deploy script exist in the repo?
+          if [ ! -f "deploy-scripts/08-remote-deploy.sh" ]; then
+            echo "ERROR: deploy-scripts/08-remote-deploy.sh not found in repo."
+            exit 1
+          fi
+
+          # Upload the remote deploy script
+          scp \
+            -i ~/.ssh/deploy_key \
+            -P "${SSH_PORT_CLEAN}" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            deploy-scripts/08-remote-deploy.sh \
+            "${DROPLET_USER_CLEAN}@${DROPLET_HOST_CLEAN}:/tmp/08-remote-deploy.sh"
+
+          echo "Remote deploy script uploaded. To continue with a full deploy,"
+          echo "trigger the deploy.yml workflow instead — it handles the full build + tarball pipeline."
+
+      # Always clean up the private key
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

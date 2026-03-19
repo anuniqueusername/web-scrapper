@@ -2,9 +2,9 @@ const FacebookWorker = require('./facebook-worker');
 const WorkerPool = require('./worker-pool');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.join(__dirname, '..', 'data');
 const FB_OUTPUT_FILE = path.join(DATA_DIR, 'facebook-listings.json');
 
 // Create data directory if it doesn't exist

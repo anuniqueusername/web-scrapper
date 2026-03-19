@@ -17,7 +17,8 @@
       "Bash(npm run:*)",
       "Bash(python -c \":*)",
       "Bash(bash -n \"d:/Projects/Competitor Scraper/deploy-scripts/08-remote-deploy.sh\")",
-      "Bash(bash -n \"d:/Projects/Competitor Scraper/deploy-scripts/01-server-setup.sh\")"
+      "Bash(bash -n \"d:/Projects/Competitor Scraper/deploy-scripts/01-server-setup.sh\")",
+      "WebFetch(domain:docs.digitalocean.com)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Competitor Scraper\\.github\\workflows"
