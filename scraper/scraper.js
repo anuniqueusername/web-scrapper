@@ -99,7 +99,9 @@ async function initBrowser() {
         '--disable-gpu',
         '--disable-blink-features=AutomationControlled',
         '--single-process=false'
-      ]
+      ],
+      // Use the downloaded Chrome executable
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     });
   }
   return browser;
