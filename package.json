@@ -9,6 +9,7 @@
     "build": "next build --webpack",
     "build:turbopack": "next build",
     "production": "next start",
+    "postinstall": "npx puppeteer browsers install chrome",
     "legacy:scraper": "node scraper/scraper.js",
     "legacy:pool": "node scraper/scraper-pool.js",
     "legacy:facebook": "node scraper/facebook-scraper-pool.js",
