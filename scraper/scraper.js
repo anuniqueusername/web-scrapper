@@ -1,5 +1,4 @@
-const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -92,10 +91,16 @@ function loadStatus() {
 async function initBrowser() {
   if (!browser) {
     browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
+      executablePath: '/usr/bin/chromium-browser',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
+        '--single-process=false'
+      ]
     });
   }
   return browser;

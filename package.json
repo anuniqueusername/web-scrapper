@@ -9,6 +9,7 @@
     "build": "next build --webpack",
     "build:turbopack": "next build",
     "production": "next start",
+    "postinstall": "node install-chromium.js || true",
     "legacy:scraper": "node scraper/scraper.js",
     "legacy:pool": "node scraper/scraper-pool.js",
     "legacy:facebook": "node scraper/facebook-scraper-pool.js",
@@ -17,13 +18,12 @@
     "legacy:send-all": "node scraper/send-all.js"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^120.0.0",
     "axios": "^1.13.6",
     "better-sqlite3": "^12.6.2",
     "date-fns": "^4.1.0",
     "dotenv": "^16.3.1",
     "next": "^16.1.6",
-    "puppeteer-core": "^24.37.5",
+    "puppeteer": "^24.37.5",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   }
