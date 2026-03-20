@@ -4,11 +4,11 @@
   "description": "Kijiji vending machine listings scraper",
   "main": "scraper/scraper.js",
   "scripts": {
-    "start": "node ensure-chrome.js && next start",
+    "start": "next start",
     "dev": "next dev",
     "build": "next build --webpack",
     "build:turbopack": "next build",
-    "production": "node ensure-chrome.js && next start",
+    "production": "next start",
     "legacy:scraper": "node scraper/scraper.js",
     "legacy:pool": "node scraper/scraper-pool.js",
     "legacy:facebook": "node scraper/facebook-scraper-pool.js",
@@ -22,7 +22,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.3.1",
     "next": "^16.1.6",
-    "puppeteer": "^24.37.5",
+    "puppeteer-core": "^24.37.5",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   }

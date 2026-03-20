@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -90,8 +90,32 @@ function loadStatus() {
 
 async function initBrowser() {
   if (!browser) {
+    // Try common Chrome/Chromium paths on Linux (Digital Ocean uses Linux)
+    let executablePath;
+    const possiblePaths = [
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/snap/bin/chromium',
+      process.env.PUPPETEER_EXECUTABLE_PATH
+    ];
+
+    for (const path of possiblePaths) {
+      if (path && require('fs').existsSync(path)) {
+        executablePath = path;
+        console.log(`[${new Date().toISOString()}] Found Chrome at: ${executablePath}`);
+        break;
+      }
+    }
+
+    if (!executablePath) {
+      throw new Error('Chrome/Chromium not found. Install with: apt-get install chromium-browser');
+    }
+
     browser = await puppeteer.launch({
       headless: true,
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -99,9 +123,7 @@ async function initBrowser() {
         '--disable-gpu',
         '--disable-blink-features=AutomationControlled',
         '--single-process=false'
-      ],
-      // Use the downloaded Chrome executable
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+      ]
     });
   }
   return browser;
