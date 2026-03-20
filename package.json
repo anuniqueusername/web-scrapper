@@ -17,6 +17,7 @@
     "legacy:send-all": "node scraper/send-all.js"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^124.0.0",
     "axios": "^1.13.6",
     "better-sqlite3": "^12.6.2",
     "date-fns": "^4.1.0",
