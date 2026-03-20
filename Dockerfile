@@ -1,8 +1,8 @@
 FROM node:20-slim
 
-# Install chromium-browser and dependencies
+# Install chromium and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium-browser \
+    chromium \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -25,7 +25,7 @@ EXPOSE 3000
 
 # Set environment
 ENV NODE_ENV=production
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Start the app
 CMD ["npm", "start"]
