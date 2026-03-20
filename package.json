@@ -4,7 +4,7 @@
   "description": "Kijiji vending machine listings scraper",
   "main": "scraper/scraper.js",
   "scripts": {
-    "start": "next dev",
+    "start": "next start",
     "dev": "next dev",
     "build": "next build --webpack",
     "build:turbopack": "next build",
