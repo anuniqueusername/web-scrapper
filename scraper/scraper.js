@@ -177,9 +177,11 @@ async function extractListingsFromPage(page) {
     const items = [];
 
     // --- Strategy 1: standard list-view structure ---
+    // Count first to avoid querying multiple times
     const listItems = document.querySelectorAll('li[data-testid^="listing-card-list-item-"]');
+    const hasStrategy1 = listItems.length > 0;
 
-    if (listItems.length > 0) {
+    if (hasStrategy1) {
       listItems.forEach((listItem, index) => {
         try {
           const cardSection = listItem.querySelector('section[data-testid="listing-card"]');
@@ -215,9 +217,11 @@ async function extractListingsFromPage(page) {
     }
 
     // --- Strategy 2: section[data-testid="listing-card"] anywhere (grid view / alternate layout) ---
+    // Only query if strategy 1 had no results
     const cardSections = document.querySelectorAll('section[data-testid="listing-card"]');
+    const hasStrategy2 = cardSections.length > 0;
 
-    if (cardSections.length > 0) {
+    if (hasStrategy2) {
       cardSections.forEach((cardSection, index) => {
         try {
           const listingId = cardSection.getAttribute('data-listingid');
@@ -250,9 +254,11 @@ async function extractListingsFromPage(page) {
     }
 
     // --- Strategy 3: article[data-listingid] (older Kijiji markup) ---
+    // Only query if both strategy 1 and 2 had no results
     const articles = document.querySelectorAll('article[data-listingid]');
+    const hasStrategy3 = articles.length > 0;
 
-    if (articles.length > 0) {
+    if (hasStrategy3) {
       articles.forEach((article, index) => {
         try {
           const listingId = article.getAttribute('data-listingid');
@@ -726,7 +732,7 @@ async function scrapeListings() {
     }
 
     // Cleanup any lingering pages
-    // await cleanupBrowserPages();
+    await cleanupBrowserPages();
 
     // Log final page count
     const finalPages = await browserInstance.pages();
@@ -776,6 +782,8 @@ async function scrapeListings() {
     }
 
     // Set up interval - reload config each time to pick up changes from UI
+    let lastInterval = null;
+
     function setupInterval() {
       if (scrapeInterval) {
         clearInterval(scrapeInterval);
@@ -783,6 +791,7 @@ async function scrapeListings() {
 
       const currentConfig = loadConfig();
       const interval = currentConfig.interval || 60000;
+      lastInterval = interval;
 
       scrapeInterval = setInterval(async () => {
         const latestConfig = loadConfig();
@@ -793,16 +802,29 @@ async function scrapeListings() {
           return;
         }
 
+        // Memory pressure check - restart browser if memory usage exceeds threshold
+        const memUsage = process.memoryUsage();
+        const heapMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+        const memThreshold = 400; // 400MB threshold
+        if (heapMB > memThreshold && browser) {
+          console.log(`[${new Date().toISOString()}] ⚠️  Memory pressure detected (${heapMB}MB > ${memThreshold}MB). Restarting browser...`);
+          try {
+            await browser.close();
+            browser = null;
+          } catch (e) {
+            console.error(`[${new Date().toISOString()}] Error closing browser:`, e.message);
+          }
+        }
+
         if (latestConfig.scrapeAllPages) {
           await scrapeAllPages();
         } else {
           await scrapeListings();
         }
 
-        // Re-setup interval if config changed
-        const newConfig = loadConfig();
-        if (newConfig.interval !== latestConfig.interval) {
-          console.log(`[${new Date().toISOString()}] 🔄 Interval changed. Updating...`);
+        // Re-setup interval if interval changed
+        if (latestConfig.interval !== lastInterval) {
+          console.log(`[${new Date().toISOString()}] 🔄 Interval changed from ${lastInterval}ms to ${latestConfig.interval}ms. Updating...`);
           setupInterval();
         }
       }, interval);

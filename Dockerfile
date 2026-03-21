@@ -18,7 +18,7 @@ RUN npm ci
 COPY . .
 
 # Build Next.js app
-RUN npm run build
+RUN npm run build && npm cache clean --force
 
 # Expose port
 EXPOSE 3000

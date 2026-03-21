@@ -66,7 +66,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       refreshStatus();
-    }, 5000);
+    }, 10000); // Increased from 5s to 10s to reduce API polling overhead
     return () => clearInterval(interval);
   }, []);
 
