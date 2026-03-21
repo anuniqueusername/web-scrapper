@@ -842,6 +842,18 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+// Cleanup on exit
+process.on('exit', () => {
+  try {
+    if (fs.existsSync(INSTANCE_LOCK)) {
+      fs.unlinkSync(INSTANCE_LOCK);
+      console.log(`[${new Date().toISOString()}] 🔓 Instance lock removed`);
+    }
+  } catch (e) {
+    // Ignore cleanup errors
+  }
+});
+
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error(`[${new Date().toISOString()}] 💥 Uncaught exception:`, error);
