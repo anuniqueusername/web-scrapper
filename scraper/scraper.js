@@ -19,6 +19,29 @@ let scrapeInterval = null;
 let isRunning = false;
 let startTime = null;
 
+// Memory management - close extra pages if they accumulate
+async function cleanupBrowserPages() {
+  if (!browser) return;
+
+  try {
+    const pages = await browser.pages();
+    const maxPages = 2; // Keep max 2 pages open
+
+    if (pages.length > maxPages) {
+      console.log(`[${new Date().toISOString()}] 🧹 Cleaning up ${pages.length - maxPages} extra pages...`);
+      for (let i = 0; i < pages.length - maxPages; i++) {
+        try {
+          await pages[i].close();
+        } catch (e) {
+          // Ignore close errors
+        }
+      }
+    }
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] Error cleaning up pages:`, e.message);
+  }
+}
+
 // Load configuration with defaults
 function loadConfig() {
   try {
@@ -380,7 +403,15 @@ async function scrapeAllPages() {
     console.log(`[${new Date().toISOString()}] 💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
     browserInstance = await initBrowser();
+
+    // Log current pages before creating new one (scrapeAllPages)
+    const pagesBefore = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeAllPages] Pages before new page: ${pagesBefore.length}`);
+
     page = await browserInstance.newPage();
+
+    const pagesAfter = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeAllPages] Pages after new page: ${pagesAfter.length}`);
 
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
@@ -531,6 +562,22 @@ async function scrapeAllPages() {
         console.error(`[${new Date().toISOString()}] Error closing page:`, e.message);
       }
     }
+
+    // Clear memory
+    allPageListings = [];
+
+    // Cleanup any lingering pages
+    await cleanupBrowserPages();
+
+    // Log final page count
+    const finalPages = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeAllPages] Final page count: ${finalPages.length}`);
+
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+      console.log(`[${new Date().toISOString()}] 🗑️  Garbage collection triggered`);
+    }
   }
 }
 
@@ -559,7 +606,15 @@ async function scrapeListings() {
     console.log(`[${new Date().toISOString()}] 💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
     browserInstance = await initBrowser();
+
+    // Log current pages before creating new one (scrapeListings)
+    const pagesBefore = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Pages before new page: ${pagesBefore.length}`);
+
     page = await browserInstance.newPage();
+
+    const pagesAfter = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Pages after new page: ${pagesAfter.length}`);
 
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
@@ -667,6 +722,19 @@ async function scrapeListings() {
       } catch (e) {
         console.error(`[${new Date().toISOString()}] Error closing page:`, e.message);
       }
+    }
+
+    // Cleanup any lingering pages
+    // await cleanupBrowserPages();
+
+    // Log final page count
+    const finalPages = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Final page count: ${finalPages.length}`);
+
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+      console.log(`[${new Date().toISOString()}] 🗑️  Garbage collection triggered`);
     }
   }
 }
