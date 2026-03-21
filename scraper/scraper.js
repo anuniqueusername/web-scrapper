@@ -8,6 +8,7 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const OUTPUT_FILE = path.join(DATA_DIR, 'listings.json');
 const CONFIG_FILE = path.join(__dirname, '..', 'scraper-config.json');
 const STATUS_FILE = path.join(__dirname, '..', 'scraper-status.json');
+const INSTANCE_LOCK = '/tmp/scraper.instance.lock'; // Use /tmp so it clears on deploy
 
 // Create data directory if it doesn't exist
 if (!fs.existsSync(DATA_DIR)) {
