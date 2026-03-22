@@ -40,7 +40,14 @@ function saveStatus(status) {
 
 export async function GET() {
   const status = loadStatus();
-  return Response.json(status);
+
+  // Add computed field: isScheduled (true if nextRun is in the future)
+  const isScheduled = status.nextRun && new Date(status.nextRun) > new Date();
+
+  return Response.json({
+    ...status,
+    isScheduled,
+  });
 }
 
 export async function POST(request) {
