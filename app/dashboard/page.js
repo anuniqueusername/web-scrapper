@@ -11,10 +11,19 @@ function getStatusLabel(status, type) {
   if (type === 'kijiji') {
     if (status?.running || status?.processStarted) return { label: 'Running', color: 'running' };
     if (status?.enabled === false) return { label: 'Disabled', color: 'disabled' };
+
+    // Check if scheduled to run
+    if (status?.nextRun && new Date(status.nextRun) > new Date()) {
+      return { label: 'Scheduled', color: 'scheduled' };
+    }
+
     return { label: 'Idle', color: 'idle' };
   }
   // facebook
   if (status?.running || status?.processStarted) return { label: 'Running', color: 'running' };
+  if (status?.nextRun && new Date(status.nextRun) > new Date()) {
+    return { label: 'Scheduled', color: 'scheduled' };
+  }
   return { label: 'Idle', color: 'idle' };
 }
 
