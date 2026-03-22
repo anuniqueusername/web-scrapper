@@ -27,12 +27,12 @@ function LogsPanel({ tabKey, autoRefresh }) {
   const [loading, setLoading] = useState(true);
   const logEndRef = useRef(null);
 
-  useEffect(() => {
-    // Reset loading state and fetch fresh logs whenever the active scraper changes
-    setLoading(true);
-    setLogs([]);
-    loadLogs();
-  }, [tabKey]);
+  // useEffect(() => {
+  //   // Reset loading state and fetch fresh logs whenever the active scraper changes
+  //   setLoading(true);
+  //   setLogs([]);
+  //   loadLogs();
+  // }, [tabKey]);
 
   // useEffect(() => {
   //   if (!autoRefresh) return;
