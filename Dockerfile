@@ -26,6 +26,3 @@ EXPOSE 3000
 # Set environment
 ENV NODE_ENV=production
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Start the app
-CMD ["npm", "start"]
