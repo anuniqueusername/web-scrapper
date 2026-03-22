@@ -34,11 +34,11 @@ function LogsPanel({ tabKey, autoRefresh }) {
     loadLogs();
   }, [tabKey]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(loadLogs, 3000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, tabKey]);
+  // useEffect(() => {
+  //   if (!autoRefresh) return;
+  //   const interval = setInterval(loadLogs, 3000);
+  //   return () => clearInterval(interval);
+  // }, [autoRefresh, tabKey]);
 
   async function loadLogs() {
     try {
