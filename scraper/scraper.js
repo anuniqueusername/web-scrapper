@@ -598,10 +598,6 @@ async function scrapeAllPages() {
       await sendDiscordNotification(newListings, config);
     }
 
-    // Clear references to free memory
-    uniquePageListings = null;
-    existingIds = null;
-    newListings = null;
 
     const duration = Date.now() - scrapeStartTime;
 
@@ -761,9 +757,6 @@ async function scrapeListings() {
       await sendDiscordNotification(newListings, config);
     }
 
-    // Clear references to free memory
-    existingIds = null;
-    newListings = null;
 
     const duration = Date.now() - scrapeStartTime;
 
