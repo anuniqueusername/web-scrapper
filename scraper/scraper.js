@@ -556,42 +556,64 @@ async function scrapeAllPages() {
         uniquePageListings.push(listing);
       }
     }
+    // Clear the full list to free memory
+    allPageListings = null;
 
-    // Load existing data
-    let allListings = [];
+    // Load existing IDs only (not full listings) to save memory
+    let existingIds = new Set();
+    let totalListings = 0;
     if (fs.existsSync(OUTPUT_FILE)) {
-      const existingData = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf-8'));
-      allListings = Array.isArray(existingData) ? existingData : [];
+      try {
+        const existingData = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf-8'));
+        if (Array.isArray(existingData)) {
+          totalListings = existingData.length;
+          existingIds = new Set(existingData.map(l => l.id));
+        }
+      } catch (e) {
+        console.error(`[${new Date().toISOString()}] Error reading existing listings:`, e.message);
+      }
     }
 
-    // Merge new listings with existing ones (avoid duplicates)
-    const existingIds = new Set(allListings.map(l => l.id));
+    // Filter only new listings (ones not in existingIds)
     const newListings = uniquePageListings.filter(l => l.id && !existingIds.has(l.id));
+    const newListingsCount = newListings.length;
 
-    allListings.push(...newListings);
+    // Append new listings to file instead of loading/writing everything
+    if (newListingsCount > 0) {
+      try {
+        const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
+        const existingData = JSON.parse(content);
+        const updatedData = Array.isArray(existingData) ? existingData : [];
+        updatedData.push(...newListings);
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(updatedData, null, 2));
+        totalListings = updatedData.length;
+      } catch (e) {
+        console.error(`[${new Date().toISOString()}] Error updating listings:`, e.message);
+      }
 
-    // Save to JSON
-    fs.writeFileSync(OUTPUT_FILE, JSON.stringify(allListings, null, 2));
+      // Send Discord notification if there are new listings (before clearing memory)
+      await sendDiscordNotification(newListings, config);
+    }
+
+    // Clear references to free memory
+    uniquePageListings = null;
+    existingIds = null;
+    newListings = null;
 
     const duration = Date.now() - scrapeStartTime;
 
-    console.log(`[${new Date().toISOString()}] ✅ Multi-page scrape complete. Found ${allPageListings.length} listings across ${currentPage} page(s), ${uniquePageListings.length} unique. Added ${newListings.length} new. Total: ${allListings.length}`);
+    console.log(`[${new Date().toISOString()}] ✅ Multi-page scrape complete. Found ${seenInScrape.size} unique. Added ${newListingsCount} new. Total: ${totalListings}`);
 
     // Update status in UI
     saveStatus({
       running: false,
       lastRun: new Date().toISOString(),
       lastRunDuration: duration,
-      totalListings: allListings.length,
-      newListingsLastRun: newListings.length,
+      totalListings: totalListings,
+      newListingsLastRun: newListingsCount,
       nextRun: new Date(Date.now() + config.interval).toISOString(),
       errors: [], // Clear errors on success
     });
-
-    // Send Discord notification if there are new listings
-    if (newListings.length > 0) {
-      await sendDiscordNotification(newListings, config);
-    }
 
   } catch (error) {
     const duration = Date.now() - scrapeStartTime;
@@ -697,25 +719,49 @@ async function scrapeListings() {
       console.log(`[${new Date().toISOString()}] ⚠️  0 listings extracted. Check selector diagnostics above. The page structure may have changed or bot detection may have blocked the request.`);
     }
 
-    // Load existing data
-    let allListings = [];
+    // Load existing IDs only (not full listings) to save memory
+    let existingIds = new Set();
+    let totalListings = 0;
     if (fs.existsSync(OUTPUT_FILE)) {
-      const existingData = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf-8'));
-      allListings = Array.isArray(existingData) ? existingData : [];
+      try {
+        const existingData = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf-8'));
+        if (Array.isArray(existingData)) {
+          totalListings = existingData.length;
+          existingIds = new Set(existingData.map(l => l.id));
+        }
+      } catch (e) {
+        console.error(`[${new Date().toISOString()}] Error reading existing listings:`, e.message);
+      }
     }
 
-    // Merge new listings with existing ones (avoid duplicates)
-    const existingIds = new Set(allListings.map(l => l.id));
+    // Filter only new listings (ones not in existingIds)
     const newListings = listings.filter(l => l.id && !existingIds.has(l.id));
+    const newListingsCount = newListings.length;
 
-    allListings.push(...newListings);
+    // Append new listings to file instead of loading/writing everything
+    if (newListingsCount > 0) {
+      try {
+        const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
+        const existingData = JSON.parse(content);
+        const updatedData = Array.isArray(existingData) ? existingData : [];
+        updatedData.push(...newListings);
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(updatedData, null, 2));
+        totalListings = updatedData.length;
+      } catch (e) {
+        console.error(`[${new Date().toISOString()}] Error updating listings:`, e.message);
+      }
 
-    // Save to JSON
-    fs.writeFileSync(OUTPUT_FILE, JSON.stringify(allListings, null, 2));
+      // Send Discord notification if there are new listings (before clearing memory)
+      await sendDiscordNotification(newListings, config);
+    }
+
+    // Clear references to free memory
+    existingIds = null;
+    newListings = null;
 
     const duration = Date.now() - scrapeStartTime;
 
-    console.log(`[${new Date().toISOString()}] ✅ Scrape complete. Found ${listings.length} listings. Added ${newListings.length} new. Total: ${allListings.length}`);
+    console.log(`[${new Date().toISOString()}] ✅ Scrape complete. Found ${listings.length} listings. Added ${newListingsCount} new. Total: ${totalListings}`);
 
     // Log all found listings
     if (listings.length > 0) {
@@ -725,21 +771,19 @@ async function scrapeListings() {
       });
     }
 
+    // Clear listings reference to free memory
+    listings = null;
+
     // Update status in UI
     saveStatus({
       running: false,
       lastRun: new Date().toISOString(),
       lastRunDuration: duration,
-      totalListings: allListings.length,
-      newListingsLastRun: newListings.length,
+      totalListings: totalListings,
+      newListingsLastRun: newListingsCount,
       nextRun: new Date(Date.now() + config.interval).toISOString(),
       errors: [], // Clear errors on success
     });
-
-    // Send Discord notification if there are new listings
-    if (newListings.length > 0) {
-      await sendDiscordNotification(newListings, config);
-    }
 
   } catch (error) {
     const duration = Date.now() - scrapeStartTime;
