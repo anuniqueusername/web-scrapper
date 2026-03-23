@@ -60,6 +60,11 @@ export async function POST(request) {
     const body = await request.json();
     const config = loadConfig();
 
+    // Check if critical settings changed (URL or scrapeAllPages mode)
+    const urlChanged = body.url && body.url !== config.url;
+    const modeChanged = body.scrapeAllPages !== undefined && body.scrapeAllPages !== config.scrapeAllPages;
+    const shouldStop = urlChanged || modeChanged;
+
     // Update config with new values, but preserve 'enabled' state if not explicitly set
     const updated = {
       ...config,
@@ -73,10 +78,23 @@ export async function POST(request) {
     }
 
     if (saveConfig(updated)) {
+      // If critical config changed, restart the scraper with new settings
+      if (shouldStop) {
+        try {
+          await fetch('http://localhost:3000/api/scraper/control?action=restart', {
+            method: 'POST',
+          }).catch(() => {
+            // Silently fail if scraper isn't running
+          });
+        } catch (e) {
+          // Ignore restart errors
+        }
+      }
+
       return Response.json({
         success: true,
         config: updated,
-        message: 'Configuration saved successfully',
+        message: shouldStop ? 'Configuration saved. Scraper restarting with new settings...' : 'Configuration saved successfully',
       });
     } else {
       return Response.json(

@@ -16,9 +16,45 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 let browser;
+let reusablePage = null; // Reuse same page across scrapes to prevent memory growth
 let scrapeInterval = null;
 let isRunning = false;
 let startTime = null;
+
+// Get or create a reusable page to avoid memory churn
+async function getReusablePage() {
+  try {
+    if (reusablePage) {
+      try {
+        // Verify page is still valid
+        await reusablePage.evaluate(() => 1);
+        // Reset to blank between uses to clear DOM
+        await reusablePage.goto('about:blank', { waitUntil: 'domcontentloaded' }).catch(() => {});
+        return reusablePage;
+      } catch (e) {
+        // Page is dead, create a new one
+        console.log(`[${new Date().toISOString()}] ⚠️  Reusable page is dead, creating new one...`);
+        reusablePage = null;
+      }
+    }
+
+    // Create new page if we don't have one
+    reusablePage = await browser.newPage();
+    console.log(`[${new Date().toISOString()}] 📄 Created new reusable page`);
+
+    // Set up stealth mode BEFORE first navigation (persists for all future navigations)
+    await reusablePage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await reusablePage.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      window.chrome = { runtime: {} };
+    });
+
+    return reusablePage;
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] Error getting reusable page:`, e.message);
+    throw e;
+  }
+}
 
 // Memory management - close extra pages if they accumulate
 async function cleanupBrowserPages() {
@@ -26,17 +62,24 @@ async function cleanupBrowserPages() {
 
   try {
     const pages = await browser.pages();
-    const maxPages = 2; // Keep max 2 pages open
 
-    if (pages.length > maxPages) {
-      console.log(`[${new Date().toISOString()}] 🧹 Cleaning up ${pages.length - maxPages} extra pages...`);
-      for (let i = 0; i < pages.length - maxPages; i++) {
-        try {
-          await pages[i].close();
-        } catch (e) {
-          // Ignore close errors
+    // Close all pages except blank/about:blank pages and the reusable page
+    for (const page of pages) {
+      try {
+        if (page === reusablePage) continue; // Don't close the reusable page
+        const url = page.url();
+        // Only keep blank pages, close all others
+        if (url && url !== 'about:blank') {
+          await page.close();
         }
+      } catch (e) {
+        // Ignore close errors
       }
+    }
+
+    const remaining = await browser.pages();
+    if (remaining.length > 0) {
+      console.log(`[${new Date().toISOString()}] 🧹 Page cleanup complete. Remaining pages: ${remaining.length}`);
     }
   } catch (e) {
     console.error(`[${new Date().toISOString()}] Error cleaning up pages:`, e.message);
@@ -114,9 +157,8 @@ function loadStatus() {
 
 async function initBrowser() {
   if (!browser) {
-    browser = await puppeteer.launch({
+    const launchConfig = {
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -125,7 +167,15 @@ async function initBrowser() {
         '--disable-blink-features=AutomationControlled',
         '--single-process=false'
       ]
-    });
+    };
+
+    // Only set executablePath if PUPPETEER_EXECUTABLE_PATH env var is provided
+    // Otherwise let Puppeteer use bundled Chromium
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchConfig.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    browser = await puppeteer.launch(launchConfig);
   }
   return browser;
 }
@@ -590,7 +640,6 @@ async function scrapeAllPages() {
 
 async function scrapeListings() {
   let page;
-  let browserInstance;
   const scrapeStartTime = Date.now();
 
   try {
@@ -612,26 +661,14 @@ async function scrapeListings() {
     const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
     console.log(`[${new Date().toISOString()}] 💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
-    browserInstance = await initBrowser();
+    // Initialize browser if needed
+    await initBrowser();
 
-    // Log current pages before creating new one (scrapeListings)
-    const pagesBefore = await browserInstance.pages();
-    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Pages before new page: ${pagesBefore.length}`);
-
-    page = await browserInstance.newPage();
-
-    const pagesAfter = await browserInstance.pages();
-    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Pages after new page: ${pagesAfter.length}`);
+    // Reuse the same page to avoid memory churn
+    page = await getReusablePage();
 
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
-
-    // Stealth: suppress navigator.webdriver and mimic real browser
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      window.chrome = { runtime: {} };
-    });
 
     // Use URL from config
     const response = await page.goto(config.url, { waitUntil: 'networkidle2' });
@@ -723,20 +760,9 @@ async function scrapeListings() {
 
   } finally {
     isRunning = false;
-    if (page) {
-      try {
-        await page.close();
-      } catch (e) {
-        console.error(`[${new Date().toISOString()}] Error closing page:`, e.message);
-      }
-    }
-
-    // Cleanup any lingering pages
+    // Don't close the reusable page - it will be cleaned and reused on the next scrape
+    // Just clean up any other lingering pages
     await cleanupBrowserPages();
-
-    // Log final page count
-    const finalPages = await browserInstance.pages();
-    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Final page count: ${finalPages.length}`);
 
     // Force garbage collection if available
     if (global.gc) {
