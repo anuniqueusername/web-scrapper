@@ -870,14 +870,20 @@ async function scrapeListings() {
 process.on('SIGINT', async () => {
   console.log(`\n[${new Date().toISOString()}] 🛑 Shutting down gracefully...`);
 
+  // Stop the scheduled interval
   if (scrapeInterval) {
     clearInterval(scrapeInterval);
+    scrapeInterval = null;
     console.log(`[${new Date().toISOString()}] ⏹️  Scraping interval cleared`);
   }
 
-  // Update status to indicate not running
-  saveStatus({ running: false });
+  // Mark as not running
+  isRunning = false;
 
+  // Update status to indicate not running
+  saveStatus({ running: false, processStarted: false });
+
+  // Close browser
   if (browser) {
     try {
       await browser.close();

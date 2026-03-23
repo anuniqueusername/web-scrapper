@@ -199,89 +199,53 @@ async function handleStart() {
 }
 
 async function handleStop() {
-  if (!scraperProcess) {
-    const pid = getPid();
-    if (!pid) {
-      return Response.json(
-        { success: false, message: 'Scraper is not running' },
-        { status: 400 }
-      );
-    }
-
-    // Try to kill existing process
+  // Try to stop the scraperProcess if it's in memory
+  if (scraperProcess) {
     try {
+      console.log('[API] Stopping scraper process...');
+      scraperProcess.kill('SIGINT');
+      scraperProcess = null;
+      clearPid();
+      updateStatus({ running: false, processStarted: false });
+      return Response.json({
+        success: true,
+        message: 'Scraper stopped successfully',
+      });
+    } catch (error) {
+      if (error.code !== 'ESRCH') {
+        console.error('[API] Error stopping scraper:', error.message);
+      }
+      scraperProcess = null;
+    }
+  }
+
+  // Also try to kill by PID in case process is running but not in memory
+  const pid = getPid();
+  if (pid && isProcessRunning(pid)) {
+    try {
+      console.log(`[API] Killing scraper process by PID ${pid}...`);
       process.kill(pid, 'SIGINT');
+      clearPid();
+      updateStatus({ running: false, processStarted: false });
+      return Response.json({
+        success: true,
+        message: 'Scraper stopped successfully',
+      });
     } catch (error) {
       // Process already dead, that's fine
       if (error.code !== 'ESRCH') {
         console.error('[API] Error killing process:', error.message);
       }
     }
-
-    clearPid();
-    updateStatus({ running: false, processStarted: false });
-    return Response.json({
-      success: true,
-      message: 'Scraper stopped successfully',
-    });
   }
 
-  try {
-    console.log('[API] Stopping scraper...');
-
-    // Send SIGINT for graceful shutdown
-    try {
-      scraperProcess.kill('SIGINT');
-    } catch (error) {
-      // Process already dead, that's fine
-      if (error.code !== 'ESRCH') {
-        throw error;
-      }
-    }
-
-    // Wait for process to exit (with timeout)
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        if (scraperProcess) {
-          console.log('[API] Force killing scraper...');
-          try {
-            scraperProcess.kill('SIGKILL');
-          } catch (e) {
-            // Already dead
-          }
-        }
-        resolve();
-      }, 5000);
-
-      const exitListener = () => {
-        clearTimeout(timeout);
-        resolve();
-      };
-
-      if (scraperProcess) {
-        scraperProcess.once('exit', exitListener);
-      } else {
-        resolve();
-      }
-    });
-
-    scraperProcess = null;
-    clearPid();
-    updateStatus({ running: false, processStarted: false });
-
-    console.log('[API] Scraper stopped successfully');
-
-    return Response.json({
-      success: true,
-      message: 'Scraper stopped successfully',
-    });
-  } catch (error) {
-    console.error('[API] Error stopping scraper:', error.message);
-    return Response.json(
-      { success: false, message: `Failed to stop scraper: ${error.message}` },
-      { status: 500 }
-    );
-  }
+  // No process found
+  clearPid();
+  updateStatus({ running: false, processStarted: false });
+  return Response.json(
+    { success: true, message: 'Scraper is not running' },
+    { status: 200 }
+  );
 }
 
 async function handleRestart() {
