@@ -581,9 +581,12 @@ async function scrapeAllPages() {
     // Append new listings to file instead of loading/writing everything
     if (newListingsCount > 0) {
       try {
-        const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
-        const existingData = JSON.parse(content);
-        const updatedData = Array.isArray(existingData) ? existingData : [];
+        let updatedData = [];
+        if (fs.existsSync(OUTPUT_FILE)) {
+          const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
+          const existingData = JSON.parse(content);
+          updatedData = Array.isArray(existingData) ? existingData : [];
+        }
         updatedData.push(...newListings);
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(updatedData, null, 2));
         totalListings = updatedData.length;
@@ -741,9 +744,12 @@ async function scrapeListings() {
     // Append new listings to file instead of loading/writing everything
     if (newListingsCount > 0) {
       try {
-        const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
-        const existingData = JSON.parse(content);
-        const updatedData = Array.isArray(existingData) ? existingData : [];
+        let updatedData = [];
+        if (fs.existsSync(OUTPUT_FILE)) {
+          const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
+          const existingData = JSON.parse(content);
+          updatedData = Array.isArray(existingData) ? existingData : [];
+        }
         updatedData.push(...newListings);
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(updatedData, null, 2));
         totalListings = updatedData.length;
@@ -770,9 +776,6 @@ async function scrapeListings() {
         console.log(`   ${listing.title} | ${listing.price}`);
       });
     }
-
-    // Clear listings reference to free memory
-    listings = null;
 
     // Update status in UI
     saveStatus({
