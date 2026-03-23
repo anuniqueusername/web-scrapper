@@ -63,7 +63,21 @@ export default function SettingsPage() {
       if (res.ok) {
         const updated = await res.json();
         setConfig(updated.config);
-        showMessage('Settings saved successfully', 'success');
+
+        // If critical config changed, trigger a restart
+        if (updated.shouldRestart) {
+          showMessage('Settings saved. Restarting scraper with new configuration...', 'success');
+          // Restart the scraper
+          try {
+            await fetch('/api/scraper/control?action=restart', {
+              method: 'POST',
+            });
+          } catch (e) {
+            // Silently fail if restart doesn't work
+          }
+        } else {
+          showMessage('Settings saved successfully', 'success');
+        }
       } else {
         showMessage('Failed to save settings', 'error');
       }

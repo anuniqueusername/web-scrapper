@@ -144,7 +144,10 @@ body {
   margin-bottom: 18px;
 }
 
-.form-group label {
+/* Regular labels for form fields */
+.form-group label[htmlFor],
+.form-group label:has(select),
+.form-group label:has(textarea) {
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
@@ -152,6 +155,32 @@ body {
   font-size: 0.95em;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Labels for checkboxes and radios (inline) */
+.form-group label:has(input[type="checkbox"]),
+.form-group label:has(input[type="radio"]) {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #c7d2fe;
+  font-size: 0.95em;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.form-group input[type="checkbox"],
+.form-group input[type="radio"] {
+  width: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  margin-right: 8px;
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: #d8b4fe;
+  flex-shrink: 0;
 }
 
 .form-group input,
@@ -166,6 +195,12 @@ body {
   font-family: inherit;
   color: #e2e8f0;
   transition: all 0.2s ease;
+}
+
+.form-group label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
 .form-group input::placeholder,

@@ -78,23 +78,17 @@ export async function POST(request) {
     }
 
     if (saveConfig(updated)) {
-      // If critical config changed, restart the scraper with new settings
+      // If critical config changed, trigger a restart
       if (shouldStop) {
-        try {
-          await fetch('http://localhost:3000/api/scraper/control?action=restart', {
-            method: 'POST',
-          }).catch(() => {
-            // Silently fail if scraper isn't running
-          });
-        } catch (e) {
-          // Ignore restart errors
-        }
+        // Send restart in response message, let client trigger it
+        // This ensures the scraper restarts with the new config loaded from disk
       }
 
       return Response.json({
         success: true,
         config: updated,
-        message: shouldStop ? 'Configuration saved. Scraper restarting with new settings...' : 'Configuration saved successfully',
+        message: shouldStop ? 'Configuration saved. Scraper will use new settings on next run.' : 'Configuration saved successfully',
+        shouldRestart: shouldStop,
       });
     } else {
       return Response.json(
