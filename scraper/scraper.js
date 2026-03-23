@@ -16,62 +16,27 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 let browser;
-let reusablePage = null; // Reuse the same page across scrapes to avoid memory churn
 let scrapeInterval = null;
 let isRunning = false;
 let startTime = null;
 
-// Get or create a reusable page to avoid memory churn from creating/destroying pages
-async function getReusablePage() {
-  try {
-    if (reusablePage) {
-      try {
-        // Verify page is still valid
-        await reusablePage.evaluate(() => 1);
-        // Clear cookies and cache between uses
-        await reusablePage.goto('about:blank', { waitUntil: 'domcontentloaded' });
-        return reusablePage;
-      } catch (e) {
-        // Page is dead, create a new one
-        console.log(`[${new Date().toISOString()}] ⚠️  Reusable page is dead, creating new one...`);
-        reusablePage = null;
-      }
-    }
-
-    // Create new page if we don't have one
-    reusablePage = await browser.newPage();
-    console.log(`[${new Date().toISOString()}] 📄 Created new reusable page`);
-    return reusablePage;
-  } catch (e) {
-    console.error(`[${new Date().toISOString()}] Error getting reusable page:`, e.message);
-    throw e;
-  }
-}
-
-// Memory management - close all extra pages (keep only blank pages)
+// Memory management - close extra pages if they accumulate
 async function cleanupBrowserPages() {
   if (!browser) return;
 
   try {
     const pages = await browser.pages();
+    const maxPages = 2; // Keep max 2 pages open
 
-    // Close all pages except blank/about:blank pages and the reusable page
-    for (const page of pages) {
-      try {
-        if (page === reusablePage) continue; // Don't close the reusable page
-        const url = page.url();
-        // Only keep blank pages, close all others
-        if (url && url !== 'about:blank') {
-          await page.close();
+    if (pages.length > maxPages) {
+      console.log(`[${new Date().toISOString()}] 🧹 Cleaning up ${pages.length - maxPages} extra pages...`);
+      for (let i = 0; i < pages.length - maxPages; i++) {
+        try {
+          await pages[i].close();
+        } catch (e) {
+          // Ignore close errors
         }
-      } catch (e) {
-        // Ignore close errors
       }
-    }
-
-    const remaining = await browser.pages();
-    if (remaining.length > 0) {
-      console.log(`[${new Date().toISOString()}] 🧹 Page cleanup complete. Remaining pages: ${remaining.length}`);
     }
   } catch (e) {
     console.error(`[${new Date().toISOString()}] Error cleaning up pages:`, e.message);
@@ -427,6 +392,7 @@ async function sendDiscordNotification(newListings, config) {
 
 async function scrapeAllPages() {
   let page;
+  let browserInstance;
   const scrapeStartTime = Date.now();
   let allPageListings = [];
 
@@ -443,11 +409,16 @@ async function scrapeAllPages() {
     const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
     console.log(`[${new Date().toISOString()}] 💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
-    // Initialize browser if needed
-    await initBrowser();
+    browserInstance = await initBrowser();
 
-    // Reuse the same page to avoid memory churn
-    page = await getReusablePage();
+    // Log current pages before creating new one (scrapeAllPages)
+    const pagesBefore = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeAllPages] Pages before new page: ${pagesBefore.length}`);
+
+    page = await browserInstance.newPage();
+
+    const pagesAfter = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeAllPages] Pages after new page: ${pagesAfter.length}`);
 
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
@@ -591,13 +562,23 @@ async function scrapeAllPages() {
 
   } finally {
     isRunning = false;
-    // Don't close the reusable page - it will be cleaned and reused on the next scrape
+    if (page) {
+      try {
+        await page.close();
+      } catch (e) {
+        console.error(`[${new Date().toISOString()}] Error closing page:`, e.message);
+      }
+    }
 
     // Clear memory
     allPageListings = [];
 
-    // Cleanup any other lingering pages
+    // Cleanup any lingering pages
     await cleanupBrowserPages();
+
+    // Log final page count
+    const finalPages = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeAllPages] Final page count: ${finalPages.length}`);
 
     // Force garbage collection if available
     if (global.gc) {
@@ -609,6 +590,7 @@ async function scrapeAllPages() {
 
 async function scrapeListings() {
   let page;
+  let browserInstance;
   const scrapeStartTime = Date.now();
 
   try {
@@ -630,11 +612,16 @@ async function scrapeListings() {
     const totalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
     console.log(`[${new Date().toISOString()}] 💾 Memory usage: ${usedMB}MB / ${totalMB}MB`);
 
-    // Initialize browser if needed
-    await initBrowser();
+    browserInstance = await initBrowser();
 
-    // Reuse the same page to avoid memory churn
-    page = await getReusablePage();
+    // Log current pages before creating new one (scrapeListings)
+    const pagesBefore = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Pages before new page: ${pagesBefore.length}`);
+
+    page = await browserInstance.newPage();
+
+    const pagesAfter = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Pages after new page: ${pagesAfter.length}`);
 
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(30000);
@@ -736,9 +723,20 @@ async function scrapeListings() {
 
   } finally {
     isRunning = false;
-    // Don't close the reusable page - it will be cleaned and reused on the next scrape
-    // Just clean up any other lingering pages
+    if (page) {
+      try {
+        await page.close();
+      } catch (e) {
+        console.error(`[${new Date().toISOString()}] Error closing page:`, e.message);
+      }
+    }
+
+    // Cleanup any lingering pages
     await cleanupBrowserPages();
+
+    // Log final page count
+    const finalPages = await browserInstance.pages();
+    console.log(`[${new Date().toISOString()}] 📄 [scrapeListings] Final page count: ${finalPages.length}`);
 
     // Force garbage collection if available
     if (global.gc) {
@@ -802,6 +800,20 @@ async function scrapeListings() {
         if (latestConfig.enabled === false) {
           console.log(`[${new Date().toISOString()}] ⏸️  Scraper disabled. Waiting...`);
           return;
+        }
+
+        // Memory pressure check - restart browser if memory usage exceeds threshold
+        const memUsage = process.memoryUsage();
+        const heapMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+        const memThreshold = 400; // 400MB threshold
+        if (heapMB > memThreshold && browser) {
+          console.log(`[${new Date().toISOString()}] ⚠️  Memory pressure detected (${heapMB}MB > ${memThreshold}MB). Restarting browser...`);
+          try {
+            await browser.close();
+            browser = null;
+          } catch (e) {
+            console.error(`[${new Date().toISOString()}] Error closing browser:`, e.message);
+          }
         }
 
         if (latestConfig.scrapeAllPages) {
