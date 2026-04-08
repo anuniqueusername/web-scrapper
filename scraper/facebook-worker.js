@@ -289,8 +289,40 @@ class FacebookWorker {
 
       this.log(`✅ Scrolling complete. Now extracting all listings from page...`);
 
-      // Debug: Save page content for inspection
+      // Diagnostic snapshot — critical for debugging deploy vs local differences
       const pageContent = await page.content();
+      const pageTitle = await page.title();
+      const pageUrl = page.url();
+      this.log(`📄 Final URL: ${pageUrl}`);
+      this.log(`📄 Page title: "${pageTitle}"`);
+      this.log(`📄 Page HTML length: ${pageContent.length} chars`);
+
+      // Detect login wall / CAPTCHA / blocking pages
+      const lowerContent = pageContent.toLowerCase();
+      if (lowerContent.includes('log in') || lowerContent.includes('sign in') || lowerContent.includes('login')) {
+        this.log(`⚠️  DETECTED: Login wall — Facebook is requiring authentication`);
+      }
+      if (lowerContent.includes('captcha') || lowerContent.includes('are you a robot') || lowerContent.includes('unusual traffic')) {
+        this.log(`⚠️  DETECTED: CAPTCHA / bot detection triggered`);
+      }
+      if (lowerContent.includes('something went wrong') || lowerContent.includes('error')) {
+        this.log(`⚠️  DETECTED: Facebook error page`);
+      }
+
+      // Count key DOM markers to understand what Facebook served
+      const diagnostics = await page.evaluate(() => {
+        return {
+          marketplaceLinks: document.querySelectorAll('a[href*="/marketplace/item/"]').length,
+          allLinks: document.querySelectorAll('a').length,
+          allImages: document.querySelectorAll('img').length,
+          roleArticles: document.querySelectorAll('[role="article"]').length,
+          bodyText: (document.body?.innerText || '').substring(0, 500),
+        };
+      });
+      this.log(`🔬 DOM diagnostics — marketplace links: ${diagnostics.marketplaceLinks}, all links: ${diagnostics.allLinks}, images: ${diagnostics.allImages}, articles: ${diagnostics.roleArticles}`);
+      this.log(`🔬 Body text preview: ${diagnostics.bodyText.replace(/\n/g, ' ').substring(0, 300)}`);
+
+      // Save page content for inspection
       const debugFile = path.join(path.dirname(this.outputFile), 'facebook-debug.html');
       fs.writeFileSync(debugFile, pageContent);
       this.log(`📄 Page content saved to ${debugFile}`);

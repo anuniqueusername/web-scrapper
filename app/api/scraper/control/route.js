@@ -143,12 +143,19 @@ async function handleStart() {
   const pid = getPid();
   if (pid && isProcessRunning(pid)) {
     // Process still running but not in memory, reattach
+    console.log(`[API] Found existing process with PID ${pid}, reattaching...`);
     scraperProcess = { pid };
     return Response.json({
       success: true,
       message: 'Scraper is already running',
       pid,
     });
+  }
+
+  // Clear stale PID if process isn't actually running
+  if (pid) {
+    console.log(`[API] Clearing stale PID ${pid}`);
+    clearPid();
   }
 
   try {
@@ -163,6 +170,7 @@ async function handleStart() {
 
     // Save PID
     savePid(scraperProcess.pid);
+    console.log(`[API] Scraper spawned with PID ${scraperProcess.pid}`);
 
     // Stream output to both log file and console
     const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
@@ -182,7 +190,7 @@ async function handleStart() {
     // Update status
     updateStatus({ running: true, processStarted: true });
 
-    console.log(`[API] Scraper started with PID ${scraperProcess.pid}`);
+    console.log(`[API] Scraper started successfully with PID ${scraperProcess.pid}`);
 
     return Response.json({
       success: true,
@@ -191,6 +199,8 @@ async function handleStart() {
     });
   } catch (error) {
     console.error('[API] Error starting scraper:', error.message);
+    scraperProcess = null;
+    clearPid();
     return Response.json(
       { success: false, message: `Failed to start scraper: ${error.message}` },
       { status: 500 }

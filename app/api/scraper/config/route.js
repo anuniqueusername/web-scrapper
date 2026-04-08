@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const CONFIG_FILE = path.join(process.cwd(), 'scraper-config.json');
+const STATUS_FILE = path.join(process.cwd(), 'scraper-status.json');
 
 function getDefaultConfig() {
   return {
@@ -50,6 +51,18 @@ function saveConfig(config) {
   }
 }
 
+function isScraperRunning() {
+  try {
+    if (fs.existsSync(STATUS_FILE)) {
+      const status = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf-8'));
+      return status.running || status.processStarted;
+    }
+  } catch (error) {
+    console.error('Error checking scraper status:', error);
+  }
+  return false;
+}
+
 export async function GET() {
   const config = loadConfig();
   return Response.json(config);
@@ -78,17 +91,19 @@ export async function POST(request) {
     }
 
     if (saveConfig(updated)) {
-      // If critical config changed, trigger a restart
-      if (shouldStop) {
-        // Send restart in response message, let client trigger it
-        // This ensures the scraper restarts with the new config loaded from disk
-      }
+      // Only restart if scraper is running and critical config changed
+      const scraperRunning = isScraperRunning();
+      const shouldRestart = shouldStop && scraperRunning;
 
       return Response.json({
         success: true,
         config: updated,
-        message: shouldStop ? 'Configuration saved. Scraper will use new settings on next run.' : 'Configuration saved successfully',
-        shouldRestart: shouldStop,
+        message: shouldRestart
+          ? 'Configuration saved. Scraper restarting with new settings...'
+          : shouldStop
+          ? 'Configuration saved. Scraper will use new settings on next run.'
+          : 'Configuration saved successfully',
+        shouldRestart: shouldRestart,
       });
     } else {
       return Response.json(
